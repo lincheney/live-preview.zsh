@@ -1,6 +1,7 @@
 # live preview
 
 declare -A live_preview_config
+live_preview_config[pty]="live_preview_pty_$RANDOM"
 live_preview_config[debounce]=0.1
 live_preview_config[timeout]=10
 live_preview_config[height]=0.9
@@ -14,9 +15,8 @@ live_preview_config[saved_label]='%F{3}%S%B saved: $command %s%b'
 live_preview_config[success_label]='%F{2}%S%B last success: $command %s%b'
 
 declare -A live_preview_vars=(
-    [pty]="live_preview_pty_$RANDOM"
     [active]=
-    [running]=0
+    [running]=
 
     [last_preview]=
     [last_code]=
@@ -254,7 +254,7 @@ live_preview.display() {
 
         # close the pty
         if (( ${live_preview_vars[running]} )); then
-            zpty -d "${live_preview_vars[pty]}"
+            zpty -d "${live_preview_config[pty]}"
             live_preview_vars[running]=0
         fi
         return
@@ -323,17 +323,17 @@ live_preview.display() {
 }
 
 live_preview.run() {
-    if (( ! ${live_preview_vars[running]} )); then
+    if (( ! live_preview_vars[running] )); then
         # start
         live_preview_vars[running]=1
-        zpty "${live_preview_vars[pty]}" live_preview.worker
+        zpty "${live_preview_config[pty]}" live_preview.worker
         zle -Fw "$REPLY" live_preview.display
     fi
-    zpty -w "${live_preview_vars[pty]}" "$(declare -p LINES); $(declare -p BUFFER)"
+    zpty -w "${live_preview_config[pty]}" "$(declare -p LINES); $(declare -p BUFFER)"
 }
 
 live_preview.update() {
-    if (( ${live_preview_vars[active]} )); then
+    if (( live_preview_vars[active] )); then
         live_preview.run
     fi
 }
@@ -354,22 +354,14 @@ live_preview.stop() {
 
     if (( ${live_preview_vars[running]} )); then
         region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
-        zpty -d "${live_preview_vars[pty]}"
+        zpty -d "${live_preview_config[pty]}"
         live_preview_vars[running]=0
     fi
 }
 
 live_preview.reset() {
     live_preview.stop
-    live_preview_vars[last_preview]=
-    live_preview_vars[last_buffer]=
-    live_preview_vars[last_code]=
-    live_preview_vars[last_successful_preview]=
-    live_preview_vars[last_successful_buffer]=
-    live_preview_vars[last_successful_code]=
-    live_preview_vars[last_saved_preview]=
-    live_preview_vars[last_saved_buffer]=
-    live_preview_vars[last_saved_code]=
+    live_preview_vars=()
 }
 
 live_preview.toggle() {
