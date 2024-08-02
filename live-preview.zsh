@@ -5,15 +5,30 @@ live_preview_config[debounce]=0.1
 live_preview_config[timeout]=10
 live_preview_config[height]=0.9
 live_preview_config[char_limit]=100000
+live_preview_config[highlight_failed_command]='bg=#330000'
+live_preview_config[dim]=1
+live_preview_config[sep]='─'
+live_preview_config[failed_message]=$'\x1b[31mCommand failed with exit status %s\x1b[0m'
+live_preview_config[preview_label]='%F{13}%S%B preview: $command %s%b'
+live_preview_config[saved_label]='%F{3}%S%B saved: $command %s%b'
+live_preview_config[success_label]='%F{2}%S%B last success: $command %s%b'
 
 declare -A live_preview_vars=(
     [pty]="live_preview_pty_$RANDOM"
     [active]=0
     [running]=0
-    [last_code]=
+
     [last_preview]=
+    [last_code]=
+    [last_buffer]=
+
     [last_successful_preview]=
+    [last_successful_code]=
+    [last_successful_buffer]=
+
     [last_saved_preview]=
+    [last_saved_code]=
+    [last_saved_buffer]=
 )
 
 zmodload zsh/datetime
@@ -116,6 +131,7 @@ eval "$BUFFER"
 
         ) | (
 
+            command="$BUFFER"
             data=()
             last=''
             while IFS= read -r line; do
@@ -130,14 +146,9 @@ eval "$BUFFER"
                 # flush partial data
                 line="${(F)data[@]}"
                 line="${line::${live_preview_config[char_limit]}}"
-                printf '%s\n' "partial=1; $(declare -p line)"
+                printf '%s\n' "partial=1; $(declare -p command); $(declare -p line)"
                 line=
             done
-
-            if [[ "${#data[@]}" > 0 && "${data[-1]}" == '' ]]; then
-                # drop trailing blank line
-                data=( "${data[@]:0: -1}" )
-            fi
 
             code="${last:-"$line"}"
             if [[ "$data" == '(eval):1: command not found: '* ]]; then
@@ -150,7 +161,7 @@ eval "$BUFFER"
             line="${(F)data[@]}"
             line="${line::${live_preview_config[char_limit]}}"
             code="${code:-0}"
-            printf '%s\n' "partial=0; $(declare -p code); $(declare -p line)"
+            printf '%s\n' "partial=0; $(declare -p command); $(declare -p code); $(declare -p line)"
         )
     done
 )
@@ -185,10 +196,10 @@ live_preview.show_message() {
     # make scroll region very small
     # restore cursor
     # go down one line
-    # print message + newline
+    # print message
     # restore scroll region
     # restore cursor again
-    printf '\x1b7\x1b[%i;%ir\x1b8\n\x1b[J%s\n\x1b[0;%ir\x1b8' "$LINES" "$((LINES+100))" "$message" "$((LINES+100))"
+    printf '\x1b7\x1b[%i;%ir\x1b8\n\x1b[J%s\x1b[0;%ir\x1b8' "$LINES" "$((LINES+100))" "$message" "$((LINES+100))"
     # go back
     if (( BUFFERLINES != 1 )); then
         CURSOR="$oldcursor"
@@ -199,10 +210,35 @@ live_preview.show_message() {
     printf '\x1b[?2026l'
 }
 
+live_preview._add_pane() {
+    if [[ "$preview" != '' ]]; then
+        if [[ "${preview[-1]}" != $'\n' ]]; then
+            preview+=$'\n'
+        fi
+        preview+=$'\n'
+    fi
+
+    set -o localoptions -o prompt_subst
+
+    local format="$1"
+    local command="$2"
+    local code="$3"
+    local text
+    print -v text -P "${format}%-0<<${sep}"
+    preview+="$text"$'\x1b[0m'
+
+    # show an error msg if failed
+    if (( code != 0 )); then
+        print -v text -f "${live_preview_config[failed_message]}" "$code"
+        preview+="$text"$'\x1b[0m\n'
+    fi
+}
+
 live_preview.display() {
     local fd="$1"
     local partial=
     local line=
+    local command=
     local code="${live_preview_vars[last_code]}"
 
     # wait for a line from the worker
@@ -219,44 +255,41 @@ live_preview.display() {
     fi
 
     # read until the most recent
-    while IFS= read -t0 -u "$fd" -r line; do :; done
+    while IFS= read -t0.01 -u "$fd" -r line; do :; done
 
     eval "$line"
 
-    if [[ "$line" == '(eval):1: parse error near '* ]]; then
-        :
+    if [[ -n "$BUFFER" ]]; then
 
-    elif [[ -n "$BUFFER" ]]; then
-
-        if [[ "$line" != "${live_preview_vars[last_preview]}" || "$code" != "${live_preview_vars[last_code]}" ]]; then
+        if [[ "$line" != "${live_preview_vars[last_preview]}" || "$code" != "${live_preview_vars[last_code]}" || "$command" != "${live_preview_vars[last_buffer]}" ]]; then
             region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
+
+            local sep="${live_preview_config[sep]}"
+            sep="${(pl:$COLUMNS::$sep:)}"
 
             local height
             live_preview.get_height height
 
-            local sep=
-            print -v sep -f '─%.s' {1..$COLUMNS}
+            local preview=
+            live_preview._add_pane "${live_preview_config[preview_label]}" "$command" "$code"
+            # show the output
+            preview+="$line"
 
-            local preview="$line"
-
-            # show the saved preview
+            # show the saved preview if any
             if [[ "${live_preview_vars[last_saved_preview]}" =~ [[:graph:]] ]]; then
-                if [[ "${preview[-1]}" != $'\n' ]]; then
-                    preview+=$'\n'
-                fi
-                preview+=$'\x1b[31m\n'"$sep"$'\x1b[0m\n'"${live_preview_vars[last_saved_preview]}"
+                live_preview._add_pane "${live_preview_config[saved_label]}" "${live_preview_vars[last_saved_buffer]}" "${live_preview_vars[last_saved_code]}"
+                preview+="${live_preview_vars[last_saved_preview]}"
             fi
 
             # if the command failed, then output an error message and show the previous successful preview
             if (( code != 0 )); then
-                region_highlight+=( "0 $(( ${#BUFFER} + 1 )) bg=#330000 memo=live_preview" )
-                preview=$'\x1b[31m'"Command failed with exit status $code"$'\x1b[0m\n'"$preview"
+                if [[ -n "${live_preview_config[highlight_failed_command]}" ]]; then
+                    region_highlight+=( "0 $(( ${#BUFFER} + 1 )) ${live_preview_config[highlight_failed_command]} memo=live_preview" )
+                fi
 
                 if [[ "${live_preview_vars[last_successful_preview]}" =~ [[:graph:]] ]]; then
-                    if [[ "${preview[-1]}" != $'\n' ]]; then
-                        preview+=$'\n'
-                    fi
-                    preview+=$'\x1b[31m\n'"$sep"$'\x1b[0m\n'"${live_preview_vars[last_successful_preview]}"
+                    live_preview._add_pane "${live_preview_config[success_label]}" "${live_preview_vars[last_successful_buffer]}" "${live_preview_vars[last_successful_code]}"
+                    preview+="${live_preview_vars[last_successful_preview]}"
                 fi
             fi
 
@@ -264,12 +297,15 @@ live_preview.display() {
                 -e "1,${height}p" \
                 -e "$((height+1))i..." \
             )"
+
             if ! [[ "$preview" =~ [[:graph:]] ]]; then
                 height=0
             fi
 
-            # make it all dim
-            preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
+            if (( ${live_preview_config[dim]} )); then
+                # make it all dim
+                preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
+            fi
             live_preview.show_message "$height" "$preview"
         fi
 
@@ -279,9 +315,12 @@ live_preview.display() {
     fi
 
     live_preview_vars[last_preview]="$line"
+    live_preview_vars[last_buffer]="$command"
     live_preview_vars[last_code]="$code"
     if (( !partial && code == 0 )); then
         live_preview_vars[last_successful_preview]="$line"
+        live_preview_vars[last_successful_buffer]="$command"
+        live_preview_vars[last_successful_code]="$code"
     fi
 }
 
@@ -319,8 +358,14 @@ live_preview.stop() {
 live_preview.reset() {
     live_preview.stop
     live_preview_vars[last_preview]=
+    live_preview_vars[last_buffer]=
+    live_preview_vars[last_code]=
     live_preview_vars[last_successful_preview]=
+    live_preview_vars[last_successful_buffer]=
+    live_preview_vars[last_successful_code]=
     live_preview_vars[last_saved_preview]=
+    live_preview_vars[last_saved_buffer]=
+    live_preview_vars[last_saved_code]=
 }
 
 live_preview.toggle() {
@@ -333,6 +378,8 @@ live_preview.toggle() {
 
 live_preview.save() {
     live_preview_vars[last_saved_preview]="${live_preview_vars[last_preview]}"
+    live_preview_vars[last_saved_code]="${live_preview_vars[last_code]}"
+    live_preview_vars[last_saved_buffer]="${live_preview_vars[last_buffer]}"
 }
 
 zle -N live_preview.display
