@@ -15,7 +15,7 @@ live_preview_config[success_label]='%F{2}%S%B last success: $command %s%b'
 
 declare -A live_preview_vars=(
     [pty]="live_preview_pty_$RANDOM"
-    [active]=0
+    [active]=
     [running]=0
 
     [last_preview]=
@@ -48,7 +48,6 @@ live_preview.worker() (
     stty -onlcr -inlcr
     local prev=
     local old_buffer=
-    local height=
     # wait for a line
     while IFS= read -r line; do
 
@@ -73,6 +72,7 @@ live_preview.worker() (
 
         # input has not changed
         if [[ "$BUFFER" == "$prev" ]]; then
+            printf 'partial=0; code=nochange; line=\n'
             continue
         fi
         prev="$BUFFER"
@@ -221,8 +221,11 @@ live_preview._add_pane() {
     set -o localoptions -o prompt_subst
 
     local format="$1"
-    local command="$2"
-    local code="$3"
+    local key="$2"
+
+    local command="${live_preview_vars[${key}_buffer]}"
+    local code="${live_preview_vars[${key}_code]}"
+    local line="${live_preview_vars[${key}_preview]}"
     local text
     print -v text -P "${format}%-0<<${sep}"
     preview+="$text"$'\x1b[0m'
@@ -232,6 +235,9 @@ live_preview._add_pane() {
         print -v text -f "${live_preview_config[failed_message]}" "$code"
         preview+="$text"$'\x1b[0m\n'
     fi
+
+    # show the output
+    preview+="$line"
 }
 
 live_preview.display() {
@@ -259,64 +265,56 @@ live_preview.display() {
 
     eval "$line"
 
-    if [[ -n "$BUFFER" ]]; then
-
-        if [[ "$line" != "${live_preview_vars[last_preview]}" || "$code" != "${live_preview_vars[last_code]}" || "$command" != "${live_preview_vars[last_buffer]}" ]]; then
-            region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
-
-            local sep="${live_preview_config[sep]}"
-            sep="${(pl:$COLUMNS::$sep:)}"
-
-            local height
-            live_preview.get_height height
-
-            local preview=
-            live_preview._add_pane "${live_preview_config[preview_label]}" "$command" "$code"
-            # show the output
-            preview+="$line"
-
-            # show the saved preview if any
-            if [[ "${live_preview_vars[last_saved_preview]}" =~ [[:graph:]] ]]; then
-                live_preview._add_pane "${live_preview_config[saved_label]}" "${live_preview_vars[last_saved_buffer]}" "${live_preview_vars[last_saved_code]}"
-                preview+="${live_preview_vars[last_saved_preview]}"
-            fi
-
-            # if the command failed, then output an error message and show the previous successful preview
-            if (( code != 0 )); then
-                if [[ -n "${live_preview_config[highlight_failed_command]}" ]]; then
-                    region_highlight+=( "0 $(( ${#BUFFER} + 1 )) ${live_preview_config[highlight_failed_command]} memo=live_preview" )
-                fi
-
-                if [[ "${live_preview_vars[last_successful_preview]}" =~ [[:graph:]] ]]; then
-                    live_preview._add_pane "${live_preview_config[success_label]}" "${live_preview_vars[last_successful_buffer]}" "${live_preview_vars[last_successful_code]}"
-                    preview+="${live_preview_vars[last_successful_preview]}"
-                fi
-            fi
-
-            preview="$(<<<"$preview" sed -n \
-                -e "1,${height}p" \
-                -e "$((height+1))i..." \
-            )"
-
-            if ! [[ "$preview" =~ [[:graph:]] ]]; then
-                height=0
-            fi
-
-            if (( ${live_preview_config[dim]} )); then
-                # make it all dim
-                preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
-            fi
-            live_preview.show_message "$height" "$preview"
-        fi
-
-    elif [[ -n "${live_preview_vars[last_preview]}" ]]; then
-        zle -M ''
-        line=
+    if [[ "$code" == nochange ]]; then
+        line="${live_preview_vars[last_preview]}"
+        code="${live_preview_vars[last_code]}"
+        command="${live_preview_vars[last_buffer]}"
+    else
+        live_preview_vars[last_preview]="$line"
+        live_preview_vars[last_code]="$code"
+        live_preview_vars[last_buffer]="$command"
     fi
 
-    live_preview_vars[last_preview]="$line"
-    live_preview_vars[last_buffer]="$command"
-    live_preview_vars[last_code]="$code"
+    local sep="${live_preview_config[sep]}"
+    sep="${(pl:$COLUMNS::$sep:)}"
+    local preview=
+    live_preview._add_pane "${live_preview_config[preview_label]}" last
+
+    region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
+
+    # show the saved preview if any
+    if [[ "${live_preview_vars[last_saved_preview]}" =~ [[:graph:]] ]]; then
+        live_preview._add_pane "${live_preview_config[saved_label]}" last_saved
+    fi
+
+    # if the command failed, then show the previous successful preview
+    if (( code != 0 )); then
+        if [[ -n "${live_preview_config[highlight_failed_command]}" ]]; then
+            region_highlight+=( "0 $(( ${#BUFFER} + 1 )) ${live_preview_config[highlight_failed_command]} memo=live_preview" )
+        fi
+
+        if [[ "${live_preview_vars[last_successful_preview]}" =~ [[:graph:]] ]]; then
+            live_preview._add_pane "${live_preview_config[success_label]}" last_successful
+        fi
+    fi
+
+    local height
+    live_preview.get_height height
+    preview="$(<<<"$preview" sed -n \
+        -e "1,${height}p" \
+        -e "$((height+1))i..." \
+    )"
+
+    if ! [[ "$preview" =~ [[:graph:]] ]]; then
+        height=0
+    fi
+
+    if (( ${live_preview_config[dim]} )); then
+        # make it all dim
+        preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
+    fi
+    live_preview.show_message "$height" "$preview"
+
     if (( !partial && code == 0 )); then
         live_preview_vars[last_successful_preview]="$line"
         live_preview_vars[last_successful_buffer]="$command"
@@ -331,7 +329,7 @@ live_preview.run() {
         zpty "${live_preview_vars[pty]}" live_preview.worker
         zle -Fw "$REPLY" live_preview.display
     fi
-    zpty -w "${live_preview_vars[pty]}" "LINES=${(q)LINES}; BUFFER=${(q)BUFFER}"
+    zpty -w "${live_preview_vars[pty]}" "$(declare -p LINES); $(declare -p BUFFER)"
 }
 
 live_preview.update() {
@@ -341,12 +339,18 @@ live_preview.update() {
 }
 
 live_preview.start() {
-    live_preview_vars[active]=1
+    if (( ! live_preview_vars[active] )); then
+        live_preview_vars[active]=1
+        zle reset-prompt
+    fi
     live_preview.run
 }
 
 live_preview.stop() {
-    live_preview_vars[active]=0
+    if (( live_preview_vars[active] )); then
+        live_preview_vars[active]=
+        zle reset-prompt
+    fi
 
     if (( ${live_preview_vars[running]} )); then
         region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
