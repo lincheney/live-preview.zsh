@@ -8,11 +8,13 @@ live_preview_config[height]=0.9
 live_preview_config[char_limit]=100000
 live_preview_config[highlight_failed_command]='bg=#330000'
 live_preview_config[dim]=1
-live_preview_config[sep]='─'
+live_preview_config[sep]='━'
+live_preview_config[label_start]='━━━━'
+live_preview_config[label_end]=''
 live_preview_config[failed_message]=$'\x1b[31mCommand failed with exit status %s\x1b[0m'
-live_preview_config[preview_label]='%F{13}%S%B preview: $command %s%b'
-live_preview_config[saved_label]='%F{3}%S%B saved: $command %s%b'
-live_preview_config[success_label]='%F{2}%S%B last success: $command %s%b'
+live_preview_config[preview_label]='%F{13}%B$label_start%S preview: $command %s'
+live_preview_config[saved_label]='%F{3}%B$label_start%S saved: $command %s'
+live_preview_config[success_label]='%F{2}%B$label_start%S last success: $command %s'
 
 declare -A live_preview_vars=(
     [active]=
@@ -226,8 +228,9 @@ live_preview._add_pane() {
     local command="${live_preview_vars[${key}_buffer]}"
     local code="${live_preview_vars[${key}_code]}"
     local line="${live_preview_vars[${key}_preview]}"
+    local label_start="${live_preview_config[label_start]}"
     local text
-    print -v text -P "${format}%-0<<${sep}"
+    print -v text -P "${format}%-0<<${sep}${live_preview_config[label_end]}"
     preview+="$text"$'\x1b[0m'
 
     # show an error msg if failed
