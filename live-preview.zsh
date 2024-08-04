@@ -24,6 +24,7 @@ live_preview_config[border_successful_label]='%S last success: $command %s'
 declare -A live_preview_vars=(
     [active]=
     [running]=
+    [pid]="$$"
 
     [last_preview]=
     [last_code]=
@@ -374,7 +375,7 @@ live_preview.stop() {
 
 live_preview.reset() {
     live_preview.stop
-    live_preview_vars=()
+    live_preview_vars=( [pid]="$$" )
 }
 
 live_preview.toggle() {
