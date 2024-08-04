@@ -254,7 +254,6 @@ live_preview._add_pane() {
     if (( live_preview_config[show_top_border] || ${#key} )); then
         local command="${live_preview_vars[last${key}_buffer]}"
         local code="${live_preview_vars[last${key}_code]}"
-        local line="${live_preview_vars[last${key}_preview]}"
 
         local border="${live_preview_config[border]}"
         local colour="${live_preview_config[border${key}_colour]}"
@@ -274,7 +273,7 @@ live_preview._add_pane() {
     fi
 
     # show the output
-    preview[-1]+="$line"
+    preview[-1]+="${live_preview_vars[last${key}_preview]}"
 }
 
 live_preview.display() {
