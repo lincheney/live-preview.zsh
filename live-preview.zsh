@@ -399,6 +399,7 @@ zle -N live_preview.start
 zle -N live_preview.stop
 zle -N live_preview.update
 zle -N live_preview.run
+zle -N live_preview.save
 
 autoload -U add-zle-hook-widget
 add-zle-hook-widget line-pre-redraw live_preview.update
