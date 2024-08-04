@@ -10,6 +10,7 @@ live_preview_config[highlight_failed_command]='bg=#330000'
 live_preview_config[dim]=1
 live_preview_config[failed_message]=$'\x1b[31mCommand failed with exit status %s\x1b[0m'
 live_preview_config[show_top_border]=0
+live_preview_config[show_last_successful_if_saved]=1
 
 live_preview_config[border]='━'
 live_preview_config[border_start]='${(pl:4::$border:)}'
@@ -41,13 +42,13 @@ declare -A live_preview_vars=(
 
 zmodload zsh/datetime
 zmodload zsh/zpty
+zmodload zsh/mathfunc
 
 live_preview.get_height() {
     local __height="${live_preview_config[height]}"
     if (( __height < 1 )); then
         # calc preview height if fraction
-        __height="$(( LINES * __height ))"
-        __height="${__height%.*}"
+        __height="$(( int(LINES * __height) ))"
     fi
     printf -v "$1" %i "$__height"
 }
@@ -178,36 +179,61 @@ live_preview.show_message() {
     # pause render
     printf '\x1b[?2026h'
 
-    local minheight="$1" message="$2"
-    # remove unhandled escapes
-    if [[ "$message" =~ $'\x1b'[^[]] || "$message" =~ $'\x1b'\\[[?\>=!]?[0-9:\;]*[^0-9:\;m] ]]; then
-        message="$(<<<"$message" sed 's/\x1b[ #%()*+].//; s/\x1b[^[]//g; s/\x1b\[[?>=!]?[0-9:;]*[^0-9:;m]//g')"
-    fi
+    local maxheight="$1"; shift
 
     # go to end of line
     if (( BUFFERLINES != 1 )); then
         local oldcursor="$CURSOR"
         CURSOR="${#BUFFER}"
     fi
-    if (( minheight )); then
-        if (( minheight > LINES-2 )); then
-            minheight="$((LINES-2))"
+    if (( maxheight )); then
+        if (( maxheight > LINES-2 )); then
+            maxheight="$((LINES-2))"
         fi
         # use zle -M to reserve space
-        local buffer
-        print -vbuffer -f ' %.s\n' {1..$minheight}
-        zle -M -- "$buffer"
+        zle -M -- "${(pl:$maxheight::\n:)}"
     fi
     zle -R
 
-    # save cursor pos
-    # make scroll region very small
-    # restore cursor
-    # go down one line
-    # print message
-    # restore scroll region
-    # restore cursor again
-    printf '\x1b7\x1b[%i;%ir\x1b8\n\x1b[J%s\x1b[0;%ir\x1b8' "$LINES" "$((LINES+100))" "$message" "$((LINES+100))"
+    local esc=$'\x1b'
+    local output=(
+        "${esc}7"       # save cursor pos
+        "${esc}[$LINES;$((LINES+100))r"     # make scroll region very small
+        "${esc}8"       # restore cursor
+        $'\n'           # go down one line
+        "${esc}[J"      # clear
+    )
+    # print the preview
+    local preview
+    local height=0
+    for preview in "$@"; do
+        # remove unhandled escapes
+        if [[ "$preview" =~ $'\x1b'[^[]] || "$preview" =~ $'\x1b'\\[[?\>=!]?[0-9:\;]*[^0-9:\;m] ]]; then
+            preview="$(<<<"$preview" sed 's/\x1b[ #%()*+].//; s/\x1b[^[]//g; s/\x1b\[[?>=!]?[0-9:;]*[^0-9:;m]//g')"
+        fi
+        # make it dim
+        if (( ${live_preview_config[dim]} )); then
+            preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
+        fi
+        local this_height="$(( int(maxheight / $#) ))"
+        preview="$(<<<"$preview" sed -n -e "1,$(( this_height-1 ))p" -e "$(( this_height ))i...")"
+
+        output+=(
+            "${esc}[$((LINES+100))B"    # go to bottom
+            "${esc}[$(( maxheight - height ))A"  # go up to start
+            "$preview" # print preview
+            $'\n'
+        )
+        (( height += this_height ))
+    done
+
+    output+=(
+        "${esc}[0;$((LINES+100))r"          # restore scroll region
+        "${esc}8"       # restore cursor again
+    )
+    printf %s "${output[@]}"
+
+
     # go back
     if (( BUFFERLINES != 1 )); then
         CURSOR="$oldcursor"
@@ -219,17 +245,17 @@ live_preview.show_message() {
 }
 
 live_preview._add_pane() {
-    if [[ "$preview" != '' ]]; then
-        if [[ "${preview[-1]}" != $'\n' ]]; then
-            preview+=$'\n'
+    if [[ "${preview[-1]}" != '' ]]; then
+        if [[ "${preview[-1][-1]}" != $'\n' ]]; then
+            preview[-1]+=$'\n'
         fi
-        preview+=$'\n'
+        preview[-1]+=$'\n'
     fi
 
     set -o localoptions -o prompt_subst
 
     local key="$1"
-
+    preview+=( '' )
     if (( live_preview_config[show_top_border] || ${#key} )); then
         local command="${live_preview_vars[last${key}_buffer]}"
         local code="${live_preview_vars[last${key}_code]}"
@@ -243,17 +269,17 @@ live_preview._add_pane() {
 
         local text
         print -v text -P "${colour}${border_start}${format}%-0<<${border_end}"
-        preview+="$text"$'\x1b[0m'
+        preview[-1]+="$text"$'\x1b[0m'
     fi
 
     # show an error msg if failed
     if (( code != 0 )); then
         print -v text -f "${live_preview_config[failed_message]}" "$code"
-        preview+="$text"$'\x1b[0m\n'
+        preview[-1]+="$text"$'\x1b[0m\n'
     fi
 
     # show the output
-    preview+="$line"
+    preview[-1]+="$line"
 }
 
 live_preview.display() {
@@ -281,6 +307,9 @@ live_preview.display() {
 
     eval "$line"
 
+    # clear highlights
+    region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
+
     if [[ "$code" == nochange ]]; then
         line="${live_preview_vars[last_preview]}"
         code="${live_preview_vars[last_code]}"
@@ -291,10 +320,8 @@ live_preview.display() {
         live_preview_vars[last_buffer]="$command"
     fi
 
-    local preview=
+    local preview=()
     live_preview._add_pane ''
-
-    region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
 
     # show the saved preview if any
     if [[ "${live_preview_vars[last_saved_preview]}" =~ [[:graph:]] ]]; then
@@ -307,27 +334,18 @@ live_preview.display() {
             region_highlight+=( "0 $(( ${#BUFFER} + 1 )) ${live_preview_config[highlight_failed_command]} memo=live_preview" )
         fi
 
-        if [[ "${live_preview_vars[last_successful_preview]}" =~ [[:graph:]] ]]; then
+        if [[ "${live_preview_config[show_last_successful_if_saved]}" != 0 && "$code" != 0 && "${live_preview_vars[last_successful_preview]}" =~ [[:graph:]] && "${live_preview_vars[last_successful_preview]}" != "${live_preview_vars[last_saved_preview]}" ]]; then
             live_preview._add_pane _successful
         fi
     fi
 
     local height
     live_preview.get_height height
-    preview="$(<<<"$preview" sed -n \
-        -e "1,${height}p" \
-        -e "$((height+1))i..." \
-    )"
-
-    if ! [[ "$preview" =~ [[:graph:]] ]]; then
-        height=0
+    if ! [[ "${preview[*]}" =~ [[:graph:]] ]]; then
+        preview=()
     fi
 
-    if (( ${live_preview_config[dim]} )); then
-        # make it all dim
-        preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
-    fi
-    live_preview.show_message "$height" "$preview"
+    live_preview.show_message "$height" "${preview[@]}"
 
     if (( !partial && code == 0 )); then
         live_preview_vars[last_successful_preview]="$line"
