@@ -8,13 +8,18 @@ live_preview_config[height]=0.9
 live_preview_config[char_limit]=100000
 live_preview_config[highlight_failed_command]='bg=#330000'
 live_preview_config[dim]=1
-live_preview_config[sep]='━'
-live_preview_config[label_start]='━━━━'
-live_preview_config[label_end]=''
 live_preview_config[failed_message]=$'\x1b[31mCommand failed with exit status %s\x1b[0m'
-live_preview_config[preview_label]='%F{13}%B$label_start%S preview: $command %s'
-live_preview_config[saved_label]='%F{3}%B$label_start%S saved: $command %s'
-live_preview_config[success_label]='%F{2}%B$label_start%S last success: $command %s'
+live_preview_config[show_top_border]=0
+
+live_preview_config[border]='━'
+live_preview_config[border_start]='${(pl:4::$border:)}'
+live_preview_config[border_end]='${(pl:$COLUMNS::$border:)}'
+live_preview_config[border_colour]='%F{13}%B'
+live_preview_config[border_saved_colour]='%F{3}%B'
+live_preview_config[border_successful_colour]='%F{2}%B'
+live_preview_config[border_label]='%S preview: $command %s'
+live_preview_config[border_saved_label]='%S saved: $command %s'
+live_preview_config[border_successful_label]='%S last success: $command %s'
 
 declare -A live_preview_vars=(
     [active]=
@@ -222,16 +227,23 @@ live_preview._add_pane() {
 
     set -o localoptions -o prompt_subst
 
-    local format="$1"
-    local key="$2"
+    local key="$1"
 
-    local command="${live_preview_vars[${key}_buffer]}"
-    local code="${live_preview_vars[${key}_code]}"
-    local line="${live_preview_vars[${key}_preview]}"
-    local label_start="${live_preview_config[label_start]}"
-    local text
-    print -v text -P "${format}%-0<<${sep}${live_preview_config[label_end]}"
-    preview+="$text"$'\x1b[0m'
+    if (( live_preview_config[show_top_border] || ${#key} )); then
+        local command="${live_preview_vars[last${key}_buffer]}"
+        local code="${live_preview_vars[last${key}_code]}"
+        local line="${live_preview_vars[last${key}_preview]}"
+
+        local border="${live_preview_config[border]}"
+        local colour="${live_preview_config[border${key}_colour]}"
+        local border_start="${live_preview_config[border_start]}"
+        local border_end="${live_preview_config[border_end]}"
+        local format="${live_preview_config[border${key}_label]}"
+
+        local text
+        print -v text -P "${colour}${border_start}${format}%-0<<${border_end}"
+        preview+="$text"$'\x1b[0m'
+    fi
 
     # show an error msg if failed
     if (( code != 0 )); then
@@ -278,16 +290,14 @@ live_preview.display() {
         live_preview_vars[last_buffer]="$command"
     fi
 
-    local sep="${live_preview_config[sep]}"
-    sep="${(pl:$COLUMNS::$sep:)}"
     local preview=
-    live_preview._add_pane "${live_preview_config[preview_label]}" last
+    live_preview._add_pane ''
 
     region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
 
     # show the saved preview if any
     if [[ "${live_preview_vars[last_saved_preview]}" =~ [[:graph:]] ]]; then
-        live_preview._add_pane "${live_preview_config[saved_label]}" last_saved
+        live_preview._add_pane _saved
     fi
 
     # if the command failed, then show the previous successful preview
@@ -297,7 +307,7 @@ live_preview.display() {
         fi
 
         if [[ "${live_preview_vars[last_successful_preview]}" =~ [[:graph:]] ]]; then
-            live_preview._add_pane "${live_preview_config[success_label]}" last_successful
+            live_preview._add_pane _successful
         fi
     fi
 
