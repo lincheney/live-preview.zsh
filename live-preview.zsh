@@ -126,10 +126,7 @@ eval "$BUFFER"
             coproc_pid="$!"
             # use sed to truncate the lines
             timeout "${live_preview_config[timeout]}" cat <&p \
-            | sed -u -n \
-                -e "1,${height}p" \
-                -e "$((height+1))i..." \
-                -e "$((height+2))q"
+            | head -c "${live_preview_config[char_limit]}"
 
             # this has the effect of closing the coproc file descriptor
             coproc true
@@ -154,7 +151,6 @@ eval "$BUFFER"
 
                 # flush partial data
                 line="${(F)data[@]}"
-                line="${line::${live_preview_config[char_limit]}}"
                 printf '%s\n' "partial=1; $(declare -p command); $(declare -p line)"
                 line=
             done
@@ -168,7 +164,6 @@ eval "$BUFFER"
             fi
 
             line="${(F)data[@]}"
-            line="${line::${live_preview_config[char_limit]}}"
             code="${code:-0}"
             printf '%s\n' "partial=0; $(declare -p command); $(declare -p code); $(declare -p line)"
         )
