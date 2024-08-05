@@ -18,9 +18,9 @@ live_preview_config[border_end]='${(pl:$COLUMNS::$border:)}'
 live_preview_config[border_colour]='%F{13}%B'
 live_preview_config[border_saved_colour]='%F{3}%B'
 live_preview_config[border_successful_colour]='%F{2}%B'
-live_preview_config[border_label]='%S preview: $command %s'
-live_preview_config[border_saved_label]='%S saved: $command %s'
-live_preview_config[border_successful_label]='%S last success: $command %s'
+live_preview_config[border_label]='%S preview: %-10<...<$command<< %s'
+live_preview_config[border_saved_label]='%S saved: %-10<...<$command%<< %s'
+live_preview_config[border_successful_label]='%S last success: %-10<...<$command%<< %s'
 
 declare -A live_preview_vars=(
     [active]=
