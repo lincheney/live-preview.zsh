@@ -182,12 +182,17 @@ live_preview.format_pane() {
     if (( live_preview_config[dim] )); then
         preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
     fi
-    local this_height="$(( int(maxheight * size / 3) ))"
+    local this_height="$(( size == 3 ? maxheight : int(maxheight / 3) * size ))"
     preview="$(<<<"$preview" sed -n -e "1,$(( this_height-1 ))p" -e "$(( this_height ))i...")"
 
+    if (( size != 3 )); then
+        output+=(
+            "${esc}[$((LINES+100))B"    # go to bottom
+            "${esc}[$(( maxheight - height ))A"  # go up to start
+        )
+    fi
     output+=(
-        "${esc}[$((LINES+100))B"    # go to bottom
-        "${esc}[$(( maxheight - height ))A"  # go up to start
+        "${esc}[J" # clear
         "$preview" # print preview
         $'\n'
     )
@@ -220,7 +225,6 @@ live_preview.show_message() {
         "${esc}[$LINES;$((LINES+100))r"     # make scroll region very small
         "${esc}8"       # restore cursor
         $'\n'           # go down one line
-        "${esc}[J"      # clear
     )
     # print the preview
     local height=0
