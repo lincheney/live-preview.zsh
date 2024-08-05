@@ -27,18 +27,25 @@ declare -A live_preview_vars=(
     [active]=
     [running]=
     [pid]="$$"
+    [cache]=
+
+    [pane_names]=
+    [pane_pos]=
 
     [last_preview]=
     [last_code]=
     [last_buffer]=
+    [last_scroll]=
 
     [last_successful_preview]=
     [last_successful_code]=
     [last_successful_buffer]=
+    [last_successful_scroll]=
 
     [last_saved_preview]=
     [last_saved_code]=
     [last_saved_buffer]=
+    [last_saved_scroll]=
 )
 
 zmodload zsh/datetime
@@ -228,16 +235,21 @@ live_preview.show_message() {
         $'\n'           # go down one line
         "${esc}[J" # clear
     )
+    live_preview_vars[pane_pos]=''
     # print the preview
     local height=0
+    live_preview_vars[pane_pos]+="$(( LINES - maxheight ))"
     if (( $# > 0 )); then
         live_preview.format_pane "${preview[1]}" "$(( 3 - $# + 1 ))"
+        live_preview_vars[pane_pos]+=" $(( LINES - maxheight + height ))"
     fi
     if (( $# > 1 )); then
         live_preview.format_pane "${preview[2]}" 1
+        live_preview_vars[pane_pos]+=" $(( LINES - maxheight + height ))"
     fi
     if (( $# > 2 )); then
         live_preview.format_pane "${preview[3]}" 1
+        live_preview_vars[pane_pos]+=" $(( LINES - maxheight + height ))"
     fi
 
     output+=(
@@ -292,7 +304,12 @@ live_preview._add_pane() {
     fi
 
     # show the output
-    preview[-1]+="${live_preview_vars[last${key}_preview]}"
+    local text="${live_preview_vars[last${key}_preview]}"
+    if (( live_preview_vars[last${key}_scroll] > 0 )); then
+        text="$(<<<"$text" sed "1,${live_preview_vars[last${key}_scroll]}d")"
+    fi
+    preview[-1]+="$text"
+    live_preview_vars[pane_names]+=" last${key}"
 }
 
 live_preview.display() {
@@ -327,19 +344,28 @@ live_preview.display() {
         lines[-1]=()
     done
 
-    if [[ "$code" == nochange ]]; then
-        data="${live_preview_vars[last_preview]}"
-        code="${live_preview_vars[last_code]}"
-        command="${live_preview_vars[last_buffer]}"
-    else
-        live_preview_vars[last_preview]="$data"
+    if [[ "$code" != nochange ]]; then
+        if [[ "$data" != "${live_preview_vars[last_preview]}" ]]; then
+            live_preview_vars[last_scroll]=0
+            live_preview_vars[last_preview]="$data"
+        fi
+
         live_preview_vars[last_code]="$code"
         live_preview_vars[last_buffer]="$command"
     fi
 
+    live_preview.redraw
+}
+
+live_preview.redraw() {
+    local data="${live_preview_vars[last_preview]}"
+    local code="${live_preview_vars[last_code]}"
+    local command="${live_preview_vars[last_buffer]}"
+
     # clear highlights
     region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
 
+    live_preview_vars[pane_names]=''
     local preview=()
     live_preview._add_pane ''
 
@@ -368,10 +394,57 @@ live_preview.display() {
     live_preview.show_message "$height" "${preview[@]}"
 
     if (( code == 0 )); then
-        live_preview_vars[last_successful_preview]="$data"
+        if [[ "$data" != "${live_preview_vars[last_successful_preview]}" ]]; then
+            live_preview_vars[last_successful_preview]="$data"
+            live_preview_vars[last_successful_scroll]=0
+        fi
         live_preview_vars[last_successful_buffer]="$command"
         live_preview_vars[last_successful_code]="$code"
     fi
+}
+
+live_preview.get_pane_at_y() {
+    local y="$1"
+    local var="$2"
+
+    local pane_pos=( ${=live_preview_vars[pane_pos]} )
+    local i
+    for (( i = 2 ; i < ${#pane_pos[@]} && pane_pos[i] < y; i++ )); do :; done
+
+    local pane_names=( ${=live_preview_vars[pane_names]} )
+    printf -v "$var" %s "${pane_names[$i-1]}"
+}
+
+live_preview.scroll_pane() {
+    local pane="$1"
+    local amount="$2"
+    local scroll="${live_preview_vars[${pane}_scroll]}"
+
+    if (( amount > 0 )); then
+        local pane_pos=( ${=live_preview_vars[pane_pos]} )
+        local pane_names=( ${=live_preview_vars[pane_names]} )
+        local i="${pane_names[(ie)$pane]}"
+        local height="$(( pane_pos[i+1] - pane_pos[i] ))"
+        local max="$(( $(wc -l <<<"${live_preview_vars[${pane}_preview]}") - height ))"
+
+        if (( scroll + amount > max )); then
+            return
+        fi
+
+    elif (( amount < 0 && scroll + amount < 0 )); then
+        return
+    fi
+
+    (( scroll = scroll + amount ))
+
+    if (( live_preview_vars[${pane}_scroll] != scroll )); then
+        live_preview_vars[${pane}_scroll]="$scroll"
+        live_preview.refresh
+    fi
+}
+
+live_preview.refresh() {
+    zpty -w "${live_preview_config[pty]}" "$(declare -p LINES); $(declare -p BUFFER)"
 }
 
 live_preview.run() {
@@ -381,7 +454,7 @@ live_preview.run() {
         zpty "${live_preview_config[pty]}" live_preview.worker
         zle -Fw "$REPLY" live_preview.display
     fi
-    zpty -w "${live_preview_config[pty]}" "$(declare -p LINES); $(declare -p BUFFER)"
+    live_preview.refresh
 }
 
 live_preview.update() {
@@ -404,7 +477,7 @@ live_preview.stop() {
         zle reset-prompt
     fi
 
-    if (( ${live_preview_vars[running]} )); then
+    if (( live_preview_vars[running] )); then
         region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
         zpty -d "${live_preview_config[pty]}"
         live_preview_vars[running]=0
@@ -428,6 +501,7 @@ live_preview.save() {
     live_preview_vars[last_saved_preview]="${live_preview_vars[last_preview]}"
     live_preview_vars[last_saved_code]="${live_preview_vars[last_code]}"
     live_preview_vars[last_saved_buffer]="${live_preview_vars[last_buffer]}"
+    live_preview_vars[last_saved_scroll]=0
 }
 
 zle -N live_preview.display
