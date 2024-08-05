@@ -81,7 +81,7 @@ live_preview.worker() (
 
         # input has not changed
         if [[ "$BUFFER" == "$prev" ]]; then
-            printf 'partial=0; code=nochange; line=\n'
+            printf 'code=nochange; data=\n'
             continue
         fi
         prev="$BUFFER"
@@ -89,7 +89,7 @@ live_preview.worker() (
         # input is all whitespace
         # (it's probably just all blank though? since whitespace is stripped above)
         if [[ "$BUFFER" =~ ^\\s*$ ]]; then
-            printf 'partial=0; code=0; line=\n'
+            printf 'code=0; data=\n'
             continue
         fi
 
@@ -124,7 +124,7 @@ eval "$BUFFER"
             )
 
             coproc_pid="$!"
-            # use sed to truncate the lines
+            # use head to truncate the lines
             timeout "${live_preview_config[timeout]}" cat <&p \
             | head -c "${live_preview_config[char_limit]}"
 
@@ -138,20 +138,19 @@ eval "$BUFFER"
         ) | (
 
             command="$BUFFER"
-            data=()
+            data=''
             last=''
             while IFS= read -r line; do
-                data+=( "$last$line" )
+                data+="$last$line"$'\n'
                 line=
                 while IFS= read -t0.05 -r line; do
-                    data+=( "$line" )
+                    data+="$line"$'\n'
                     line=
                 done
                 last="$line"
 
                 # flush partial data
-                line="${(F)data[@]}"
-                printf '%s\n' "partial=1; $(declare -p command); $(declare -p line)"
+                printf '%s\n' "code=partial; $(declare -p command); $(declare -p data)"
                 line=
             done
 
@@ -163,9 +162,8 @@ eval "$BUFFER"
                 code=0
             fi
 
-            line="${(F)data[@]}"
             code="${code:-0}"
-            printf '%s\n' "partial=0; $(declare -p command); $(declare -p code); $(declare -p line)"
+            printf '%s\n' "$(declare -p code); $(declare -p command); $(declare -p data)"
         )
     done
 )
@@ -278,13 +276,10 @@ live_preview._add_pane() {
 
 live_preview.display() {
     local fd="$1"
-    local partial=
-    local line=
-    local command=
-    local code="${live_preview_vars[last_code]}"
+    local data=
 
     # wait for a line from the worker
-    if ! IFS= read -t0 -u "$fd" -r line; then
+    if ! IFS= read -t0 -u "$fd" -r data; then
         # no input; dead
         zle -F "$fd"
 
@@ -296,23 +291,31 @@ live_preview.display() {
         return
     fi
 
+    local lines=( "$data" )
     # read until the most recent
-    while IFS= read -t0.01 -u "$fd" -r line; do :; done
+    while IFS= read -t0.01 -u "$fd" -r data; do
+        lines+=( "$data" )
+    done
 
-    eval "$line"
-
-    # clear highlights
-    region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
+    local command=
+    local code=nochange
+    while [[ "${#lines[@]}" > 0 && "$code" == nochange ]]; do
+        eval "${lines[-1]}"
+        lines[-1]=()
+    done
 
     if [[ "$code" == nochange ]]; then
-        line="${live_preview_vars[last_preview]}"
+        data="${live_preview_vars[last_preview]}"
         code="${live_preview_vars[last_code]}"
         command="${live_preview_vars[last_buffer]}"
     else
-        live_preview_vars[last_preview]="$line"
+        live_preview_vars[last_preview]="$data"
         live_preview_vars[last_code]="$code"
         live_preview_vars[last_buffer]="$command"
     fi
+
+    # clear highlights
+    region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
 
     local preview=()
     live_preview._add_pane ''
@@ -323,7 +326,7 @@ live_preview.display() {
     fi
 
     # if the command failed, then show the previous successful preview
-    if (( code != 0 )); then
+    if [[ "$code" != 0 && "$code" != partial ]]; then
         if [[ -n "${live_preview_config[highlight_failed_command]}" ]]; then
             region_highlight+=( "0 $(( ${#BUFFER} + 1 )) ${live_preview_config[highlight_failed_command]} memo=live_preview" )
         fi
@@ -341,8 +344,8 @@ live_preview.display() {
 
     live_preview.show_message "$height" "${preview[@]}"
 
-    if (( !partial && code == 0 )); then
-        live_preview_vars[last_successful_preview]="$line"
+    if (( code == 0 )); then
+        live_preview_vars[last_successful_preview]="$data"
         live_preview_vars[last_successful_buffer]="$command"
         live_preview_vars[last_successful_code]="$code"
     fi
