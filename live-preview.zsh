@@ -54,6 +54,8 @@ live_preview.get_height() {
 }
 
 live_preview.worker() (
+    emulate -LR zsh
+
     stty -onlcr -inlcr
     local prev=
     local old_buffer=
@@ -168,6 +170,30 @@ eval "$BUFFER"
     done
 )
 
+live_preview.format_pane() {
+    local preview="$1"
+    local size="$2"
+
+    # remove unhandled escapes
+    if [[ "$preview" =~ $'\x1b'[^[]] || "$preview" =~ $'\x1b'\\[[?\>=!]?[0-9:\;]*[^0-9:\;m] ]]; then
+        preview="$(<<<"$preview" sed 's/\x1b[ #%()*+].//; s/\x1b[^[]//g; s/\x1b\[[?>=!]?[0-9:;]*[^0-9:;m]//g')"
+    fi
+    # make it dim
+    if (( live_preview_config[dim] )); then
+        preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
+    fi
+    local this_height="$(( int(maxheight * size / 3) ))"
+    preview="$(<<<"$preview" sed -n -e "1,$(( this_height-1 ))p" -e "$(( this_height ))i...")"
+
+    output+=(
+        "${esc}[$((LINES+100))B"    # go to bottom
+        "${esc}[$(( maxheight - height ))A"  # go up to start
+        "$preview" # print preview
+        $'\n'
+    )
+    (( height += this_height ))
+}
+
 live_preview.show_message() {
     # pause render
     printf '\x1b[?2026h'
@@ -197,28 +223,16 @@ live_preview.show_message() {
         "${esc}[J"      # clear
     )
     # print the preview
-    local preview
     local height=0
-    for preview in "$@"; do
-        # remove unhandled escapes
-        if [[ "$preview" =~ $'\x1b'[^[]] || "$preview" =~ $'\x1b'\\[[?\>=!]?[0-9:\;]*[^0-9:\;m] ]]; then
-            preview="$(<<<"$preview" sed 's/\x1b[ #%()*+].//; s/\x1b[^[]//g; s/\x1b\[[?>=!]?[0-9:;]*[^0-9:;m]//g')"
-        fi
-        # make it dim
-        if (( ${live_preview_config[dim]} )); then
-            preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
-        fi
-        local this_height="$(( int(maxheight / $#) ))"
-        preview="$(<<<"$preview" sed -n -e "1,$(( this_height-1 ))p" -e "$(( this_height ))i...")"
-
-        output+=(
-            "${esc}[$((LINES+100))B"    # go to bottom
-            "${esc}[$(( maxheight - height ))A"  # go up to start
-            "$preview" # print preview
-            $'\n'
-        )
-        (( height += this_height ))
-    done
+    if (( $# > 0 )); then
+        live_preview.format_pane "${preview[1]}" "$(( 3 - $# + 1 ))"
+    fi
+    if (( $# > 1 )); then
+        live_preview.format_pane "${preview[2]}" 1
+    fi
+    if (( $# > 2 )); then
+        live_preview.format_pane "${preview[3]}" 1
+    fi
 
     output+=(
         "${esc}[0;$((LINES+100))r"          # restore scroll region
@@ -275,6 +289,8 @@ live_preview._add_pane() {
 }
 
 live_preview.display() {
+    emulate -LR zsh
+
     local fd="$1"
     local data=
 
@@ -320,11 +336,6 @@ live_preview.display() {
     local preview=()
     live_preview._add_pane ''
 
-    # show the saved preview if any
-    if [[ "${live_preview_vars[last_saved_preview]}" =~ [[:graph:]] ]]; then
-        live_preview._add_pane _saved
-    fi
-
     # if the command failed, then show the previous successful preview
     if [[ "$code" != 0 && "$code" != partial ]]; then
         if [[ -n "${live_preview_config[highlight_failed_command]}" ]]; then
@@ -334,6 +345,11 @@ live_preview.display() {
         if [[ "${live_preview_config[show_last_successful_if_saved]}" != 0 && "$code" != 0 && "${live_preview_vars[last_successful_preview]}" =~ [[:graph:]] && "${live_preview_vars[last_successful_preview]}" != "${live_preview_vars[last_saved_preview]}" ]]; then
             live_preview._add_pane _successful
         fi
+    fi
+
+    # show the saved preview if any
+    if [[ "${live_preview_vars[last_saved_preview]}" =~ [[:graph:]] ]]; then
+        live_preview._add_pane _saved
     fi
 
     local height
