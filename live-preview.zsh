@@ -9,19 +9,19 @@ live_preview_config[char_limit]=100000
 live_preview_config[highlight_failed_command]='bg=#330000'
 live_preview_config[dim]=1
 live_preview_config[failed_message]=$'\x1b[31mCommand failed with exit status %s\x1b[0m'
-live_preview_config[show_top_border]=0
-live_preview_config[show_last_successful_if_saved]=1
+live_preview_config[show_main_border]=0
+live_preview_config[show_last_success_if_saved]=1
 live_preview_config[ellipsis]='…'
 
 live_preview_config[border]='━'
 live_preview_config[border_start]='${(pl:4::$border:)}'
 live_preview_config[border_end]='${(pl:$COLUMNS::$border:)}'
-live_preview_config[border_colour]='%F{13}%B'
+live_preview_config[border_main_colour]='%F{13}%B'
 live_preview_config[border_saved_colour]='%F{3}%B'
-live_preview_config[border_successful_colour]='%F{2}%B'
-live_preview_config[border_label]='%S preview: %-5<$ellipsis<$command<< %s'
+live_preview_config[border_success_colour]='%F{2}%B'
+live_preview_config[border_main_label]='%S preview: %-5<$ellipsis<$command<< %s'
 live_preview_config[border_saved_label]='%S saved: %-5<$ellipsis<$command%<< %s'
-live_preview_config[border_successful_label]='%S last success: %-5<$ellipsis<$command%<< %s'
+live_preview_config[border_success_label]='%S last success: %-5<$ellipsis<$command%<< %s'
 
 declare -A live_preview_vars=(
     [active]=
@@ -32,20 +32,23 @@ declare -A live_preview_vars=(
     [pane_names]=
     [pane_pos]=
 
-    [last_preview]=
-    [last_code]=
-    [last_buffer]=
-    [last_scroll]=
+    [main_preview]=
+    [main_code]=
+    [main_command]=
+    [main_scroll]=
+    [main_height]=
 
-    [last_successful_preview]=
-    [last_successful_code]=
-    [last_successful_buffer]=
-    [last_successful_scroll]=
+    [success_preview]=
+    [success_code]=
+    [success_command]=
+    [success_scroll]=
+    [success_height]=
 
-    [last_saved_preview]=
-    [last_saved_code]=
-    [last_saved_buffer]=
-    [last_saved_scroll]=
+    [saved_preview]=
+    [saved_code]=
+    [saved_command]=
+    [saved_scroll]=
+    [saved_height]=
 )
 
 zmodload zsh/datetime
@@ -281,16 +284,16 @@ live_preview._add_pane() {
 
     local key="$1"
     preview+=( '' )
-    if (( live_preview_config[show_top_border] || ${#key} )); then
-        local command="${live_preview_vars[last${key}_buffer]}"
-        local code="${live_preview_vars[last${key}_code]}"
+    if (( live_preview_config[show_top_border] )) || [[ "$key" != main ]]; then
+        local command="${live_preview_vars[${key}_command]}"
+        local code="${live_preview_vars[${key}_code]}"
 
         local ellipsis="${live_preview_config[ellipsis]}"
         local border="${live_preview_config[border]}"
-        local colour="${live_preview_config[border${key}_colour]}"
+        local colour="${live_preview_config[border_${key}_colour]}"
         local border_start="${live_preview_config[border_start]}"
         local border_end="${live_preview_config[border_end]}"
-        local format="${live_preview_config[border${key}_label]}"
+        local format="${live_preview_config[border_${key}_label]}"
 
         local text
         print -v text -P "${colour}${border_start}${format}%-0<<${border_end}"
@@ -304,12 +307,12 @@ live_preview._add_pane() {
     fi
 
     # show the output
-    local text="${live_preview_vars[last${key}_preview]}"
-    if (( live_preview_vars[last${key}_scroll] > 0 )); then
-        text="$(<<<"$text" sed "1,${live_preview_vars[last${key}_scroll]}d")"
+    local text="${live_preview_vars[${key}_preview]}"
+    if (( live_preview_vars[${key}_scroll] > 0 )); then
+        text="$(<<<"$text" sed "1,${live_preview_vars[${key}_scroll]}d")"
     fi
     preview[-1]+="$text"
-    live_preview_vars[pane_names]+=" last${key}"
+    live_preview_vars[pane_names]+=" ${key}"
 }
 
 live_preview.display() {
@@ -345,29 +348,29 @@ live_preview.display() {
     done
 
     if [[ "$code" != nochange ]]; then
-        if [[ "$data" != "${live_preview_vars[last_preview]}" ]]; then
-            live_preview_vars[last_scroll]=0
-            live_preview_vars[last_preview]="$data"
+        if [[ "$data" != "${live_preview_vars[main_preview]}" ]]; then
+            live_preview_vars[main_scroll]=0
+            live_preview_vars[main_preview]="$data"
         fi
 
-        live_preview_vars[last_code]="$code"
-        live_preview_vars[last_buffer]="$command"
+        live_preview_vars[main_code]="$code"
+        live_preview_vars[main_command]="$command"
     fi
 
     live_preview.redraw
 }
 
 live_preview.redraw() {
-    local data="${live_preview_vars[last_preview]}"
-    local code="${live_preview_vars[last_code]}"
-    local command="${live_preview_vars[last_buffer]}"
+    local data="${live_preview_vars[main_preview]}"
+    local code="${live_preview_vars[main_code]}"
+    local command="${live_preview_vars[main_command]}"
 
     # clear highlights
     region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
 
     live_preview_vars[pane_names]=''
     local preview=()
-    live_preview._add_pane ''
+    live_preview._add_pane main
 
     # if the command failed, then show the previous successful preview
     if [[ "$code" != 0 && "$code" != partial ]]; then
@@ -375,14 +378,14 @@ live_preview.redraw() {
             region_highlight+=( "0 $(( ${#BUFFER} + 1 )) ${live_preview_config[highlight_failed_command]} memo=live_preview" )
         fi
 
-        if [[ "${live_preview_config[show_last_successful_if_saved]}" != 0 && "$code" != 0 && "${live_preview_vars[last_successful_preview]}" =~ [[:graph:]] && "${live_preview_vars[last_successful_preview]}" != "${live_preview_vars[last_saved_preview]}" ]]; then
-            live_preview._add_pane _successful
+        if [[ "${live_preview_config[show_last_success_if_saved]}" != 0 && "$code" != 0 && "${live_preview_vars[success_preview]}" =~ [[:graph:]] && "${live_preview_vars[success_preview]}" != "${live_preview_vars[saved_preview]}" ]]; then
+            live_preview._add_pane success
         fi
     fi
 
     # show the saved preview if any
-    if [[ "${live_preview_vars[last_saved_preview]}" =~ [[:graph:]] ]]; then
-        live_preview._add_pane _saved
+    if [[ "${live_preview_vars[saved_preview]}" =~ [[:graph:]] ]]; then
+        live_preview._add_pane saved
     fi
 
     local height
@@ -394,12 +397,12 @@ live_preview.redraw() {
     live_preview.show_message "$height" "${preview[@]}"
 
     if (( code == 0 )); then
-        if [[ "$data" != "${live_preview_vars[last_successful_preview]}" ]]; then
-            live_preview_vars[last_successful_preview]="$data"
-            live_preview_vars[last_successful_scroll]=0
+        if [[ "$data" != "${live_preview_vars[success_preview]}" ]]; then
+            live_preview_vars[success_preview]="$data"
+            live_preview_vars[success_scroll]=0
         fi
-        live_preview_vars[last_successful_buffer]="$command"
-        live_preview_vars[last_successful_code]="$code"
+        live_preview_vars[success_command]="$command"
+        live_preview_vars[success_code]="$code"
     fi
 }
 
@@ -453,6 +456,11 @@ live_preview.run() {
         live_preview_vars[running]=1
         zpty "${live_preview_config[pty]}" live_preview.worker
         zle -Fw "$REPLY" live_preview.display
+
+        if (( live_preview_config[enable_mouse] )); then
+            zsh-enable-mouse 1
+        fi
+
     fi
     live_preview.refresh
 }
@@ -481,6 +489,10 @@ live_preview.stop() {
         region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
         zpty -d "${live_preview_config[pty]}"
         live_preview_vars[running]=0
+
+        if (( live_preview_config[enable_mouse] )); then
+            zsh-enable-mouse 0
+        fi
     fi
 }
 
@@ -498,10 +510,10 @@ live_preview.toggle() {
 }
 
 live_preview.save() {
-    live_preview_vars[last_saved_preview]="${live_preview_vars[last_preview]}"
-    live_preview_vars[last_saved_code]="${live_preview_vars[last_code]}"
-    live_preview_vars[last_saved_buffer]="${live_preview_vars[last_buffer]}"
-    live_preview_vars[last_saved_scroll]=0
+    live_preview_vars[saved_preview]="${live_preview_vars[main_preview]}"
+    live_preview_vars[saved_code]="${live_preview_vars[main_code]}"
+    live_preview_vars[saved_command]="${live_preview_vars[main_command]}"
+    live_preview_vars[saved_scroll]=0
 }
 
 zle -N live_preview.display
