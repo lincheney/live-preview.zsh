@@ -11,6 +11,7 @@ live_preview_config[dim]=1
 live_preview_config[failed_message]=$'\x1b[31mCommand failed with exit status %s\x1b[0m'
 live_preview_config[show_top_border]=0
 live_preview_config[show_last_successful_if_saved]=1
+live_preview_config[ellipsis]='…'
 
 live_preview_config[border]='━'
 live_preview_config[border_start]='${(pl:4::$border:)}'
@@ -18,9 +19,9 @@ live_preview_config[border_end]='${(pl:$COLUMNS::$border:)}'
 live_preview_config[border_colour]='%F{13}%B'
 live_preview_config[border_saved_colour]='%F{3}%B'
 live_preview_config[border_successful_colour]='%F{2}%B'
-live_preview_config[border_label]='%S preview: %-10<...<$command<< %s'
-live_preview_config[border_saved_label]='%S saved: %-10<...<$command%<< %s'
-live_preview_config[border_successful_label]='%S last success: %-10<...<$command%<< %s'
+live_preview_config[border_label]='%S preview: %-5<$ellipsis<$command<< %s'
+live_preview_config[border_saved_label]='%S saved: %-5<$ellipsis<$command%<< %s'
+live_preview_config[border_successful_label]='%S last success: %-5<$ellipsis<$command%<< %s'
 
 declare -A live_preview_vars=(
     [active]=
@@ -183,7 +184,7 @@ live_preview.format_pane() {
         preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
     fi
     local this_height="$(( size == 3 ? maxheight : int(maxheight / 3) * size ))"
-    preview="$(<<<"$preview" sed -n -e "1,$(( this_height-1 ))p" -e "$(( this_height ))i...")"
+    preview="$(<<<"$preview" sed -n -e "1,$(( this_height-1 ))p" -e "$(( this_height ))i${live_preview_config[ellipsis]}")"
 
     if (( size != 3 )); then
         output+=(
@@ -271,6 +272,7 @@ live_preview._add_pane() {
         local command="${live_preview_vars[last${key}_buffer]}"
         local code="${live_preview_vars[last${key}_code]}"
 
+        local ellipsis="${live_preview_config[ellipsis]}"
         local border="${live_preview_config[border]}"
         local colour="${live_preview_config[border${key}_colour]}"
         local border_start="${live_preview_config[border_start]}"
