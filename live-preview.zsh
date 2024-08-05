@@ -226,6 +226,7 @@ live_preview.show_message() {
         "${esc}[$LINES;$((LINES+100))r"     # make scroll region very small
         "${esc}8"       # restore cursor
         $'\n'           # go down one line
+        "${esc}[J" # clear
     )
     # print the preview
     local height=0
