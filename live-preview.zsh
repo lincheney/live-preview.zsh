@@ -224,19 +224,18 @@ live_preview.show_message() {
         local oldcursor="$CURSOR"
         CURSOR="${#BUFFER}"
     fi
-    if (( maxheight )); then
-        # use zle -M to reserve space
-        zle -M -- "${(pl:$maxheight::\n:)}"
-    fi
     zle -R
 
     local esc=$'\x1b'
     local output=(
-        "${esc}7"       # save cursor pos
+        # reserve space
+        "${(pl:$maxheight::\x0b:)}"
+        "${esc}[${maxheight}A"              # go back up to cli
+        "${esc}7"                           # save cursor pos
         "${esc}[$LINES;$((LINES+100))r"     # make scroll region very small
-        "${esc}8"       # restore cursor
-        $'\n'           # go down one line
-        "${esc}[J" # clear
+        "${esc}8"                           # restore cursor
+        $'\n'                               # go down one line
+        "${esc}[J"                          # clear
     )
     live_preview_vars[pane_pos]=''
     # print the preview
@@ -257,7 +256,7 @@ live_preview.show_message() {
 
     output+=(
         "${esc}[0;$((LINES+100))r"          # restore scroll region
-        "${esc}8"       # restore cursor again
+        "${esc}8"                           # restore cursor again
     )
     printf %s "${output[@]}"
 
@@ -445,7 +444,7 @@ live_preview.scroll_pane() {
 
     if (( live_preview_vars[${pane}_scroll] != scroll )); then
         live_preview_vars[${pane}_scroll]="$scroll"
-        live_preview.refresh
+        live_preview.redraw
     fi
 }
 
