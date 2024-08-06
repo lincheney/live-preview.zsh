@@ -30,22 +30,24 @@ declare -A live_preview_vars=(
     [cache]=
 
     [pane_names]=
-    [pane_pos]=
 
     [main_preview]=
     [main_code]=
     [main_command]=
     [main_scroll]=
+    [main_height]=
 
     [success_preview]=
     [success_code]=
     [success_command]=
     [success_scroll]=
+    [success_height]=
 
     [saved_preview]=
     [saved_code]=
     [saved_command]=
     [saved_scroll]=
+    [saved_height]=
 )
 
 zmodload zsh/datetime
@@ -193,13 +195,13 @@ eval "$BUFFER"
 )
 
 live_preview.format_pane() {
-    local preview="$1"
-    local size="$2"
+    local pane_name="$1"
+    local preview="$2"
 
-    local this_height="$(( size == 3 ? maxheight : int(maxheight / 3) * size ))"
+    local this_height="${live_preview_vars[${pane_name}_height]}"
     preview="$(<<<"$preview" sed -n -e "1,$(( this_height-1 ))p" -e "$(( this_height ))i${live_preview_config[ellipsis]}")"
 
-    if (( size != 3 )); then
+    if (( this_height != maxheight )); then
         output+=(
             "${esc}[$((LINES+100))B"    # go to bottom
             "${esc}[$(( maxheight - height ))A"  # go up to start
@@ -229,30 +231,21 @@ live_preview.show_message() {
     local esc=$'\x1b'
     local output=(
         # reserve space
-        "${(pl:$maxheight::\x0b:)}"
-        "${esc}[${maxheight}A"              # go back up to cli
+        "${(pl:$maxheight+1::\x0b:)}"
+        "${esc}[$((maxheight+1))A"              # go back up to cli
         "${esc}7"                           # save cursor pos
         "${esc}[$LINES;$((LINES+100))r"     # make scroll region very small
         "${esc}8"                           # restore cursor
         $'\n'                               # go down one line
         "${esc}[J"                          # clear
     )
-    live_preview_vars[pane_pos]=''
     # print the preview
     local height=0
-    live_preview_vars[pane_pos]+="$(( LINES - maxheight ))"
-    if (( $# > 0 )); then
-        live_preview.format_pane "${preview[1]}" "$(( 3 - $# + 1 ))"
-        live_preview_vars[pane_pos]+=" $(( LINES - maxheight + height ))"
-    fi
-    if (( $# > 1 )); then
-        live_preview.format_pane "${preview[2]}" 1
-        live_preview_vars[pane_pos]+=" $(( LINES - maxheight + height ))"
-    fi
-    if (( $# > 2 )); then
-        live_preview.format_pane "${preview[3]}" 1
-        live_preview_vars[pane_pos]+=" $(( LINES - maxheight + height ))"
-    fi
+    local i
+    local pane_names=( ${=live_preview_vars[pane_names]} )
+    for i in {1..${#pane_names[@]}}; do
+        live_preview.format_pane "${pane_names[i]}" "${(P)i}"
+    done
 
     output+=(
         "${esc}[0;$((LINES+100))r"          # restore scroll region
@@ -366,6 +359,11 @@ live_preview.redraw() {
     local data="${live_preview_vars[main_preview]}"
     local code="${live_preview_vars[main_code]}"
     local command="${live_preview_vars[main_command]}"
+    local height
+    live_preview.get_height height
+    live_preview_vars[main_height]=0
+    live_preview_vars[saved_height]=0
+    live_preview_vars[success_height]=0
 
     # clear highlights
     region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
@@ -382,18 +380,20 @@ live_preview.redraw() {
 
         if [[ "${live_preview_config[show_last_success_if_saved]}" != 0 && "$code" != 0 && "${live_preview_vars[success_preview]}" =~ [[:graph:]] && "${live_preview_vars[success_preview]}" != "${live_preview_vars[saved_preview]}" ]]; then
             live_preview._add_pane success
+            live_preview_vars[success_height]="$(( int(height / 3) ))"
         fi
     fi
 
     # show the saved preview if any
     if [[ "${live_preview_vars[saved_preview]}" =~ [[:graph:]] ]]; then
         live_preview._add_pane saved
+        live_preview_vars[saved_height]="$(( int(height / 3) ))"
     fi
 
-    local height
-    live_preview.get_height height
     if ! [[ "${preview[*]}" =~ [[:graph:]] ]]; then
         preview=()
+    else
+        live_preview_vars[main_height]="$(( height - live_preview_vars[saved_height] - live_preview_vars[success_height] ))"
     fi
 
     live_preview.show_message "$height" "${preview[@]}"
@@ -409,15 +409,23 @@ live_preview.redraw() {
 }
 
 live_preview.get_pane_at_y() {
-    local y="$1"
-    local var="$2"
+    local __y="$1"
+    local __var="$2"
 
-    local pane_pos=( ${=live_preview_vars[pane_pos]} )
-    local i
-    for (( i = 2 ; i < ${#pane_pos[@]} && pane_pos[i] < y; i++ )); do :; done
+    local __height
+    live_preview.get_height __height
+    (( __y -= LINES - __height ))
 
-    local pane_names=( ${=live_preview_vars[pane_names]} )
-    printf -v "$var" %s "${pane_names[$i-1]}"
+    local __pane_names=( ${=live_preview_vars[pane_names]} )
+    local __pane
+    for __pane in "${__pane_names[@]}"; do
+        (( __y -= live_preview_vars[${__pane}_height] ))
+        if (( __y <= 0 )); then
+            break
+        fi
+    done
+
+    printf -v "$__var" %s "$__pane"
 }
 
 live_preview.scroll_pane() {
@@ -426,11 +434,9 @@ live_preview.scroll_pane() {
     local scroll="${live_preview_vars[${pane}_scroll]}"
 
     if (( amount > 0 )); then
-        local pane_pos=( ${=live_preview_vars[pane_pos]} )
-        local pane_names=( ${=live_preview_vars[pane_names]} )
-        local i="${pane_names[(ie)$pane]}"
-        local height="$(( pane_pos[i+1] - pane_pos[i] ))"
-        local max="$(( $(wc -l <<<"${live_preview_vars[${pane}_preview]}") - height ))"
+        local height="${live_preview_vars[${pane}_height]}"
+        local text="${live_preview_vars[${pane}_preview]}"
+        local max="$(( $(wc -l <<<"$text") - height ))"
 
         if (( scroll + amount > max )); then
             return
