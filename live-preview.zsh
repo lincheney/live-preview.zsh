@@ -36,19 +36,16 @@ declare -A live_preview_vars=(
     [main_code]=
     [main_command]=
     [main_scroll]=
-    [main_height]=
 
     [success_preview]=
     [success_code]=
     [success_command]=
     [success_scroll]=
-    [success_height]=
 
     [saved_preview]=
     [saved_code]=
     [saved_command]=
     [saved_scroll]=
-    [saved_height]=
 )
 
 zmodload zsh/datetime
@@ -61,6 +58,9 @@ live_preview.get_height() {
         # calc preview height if fraction
         __height="$(( int(LINES * __height) ))"
     fi
+    if (( __height && __height > LINES-2 )); then
+        __height="$((LINES-2))"
+    fi
     printf -v "$1" %i "$__height"
 }
 
@@ -70,6 +70,14 @@ live_preview.worker() (
     stty -onlcr -inlcr
     local prev=
     local old_buffer=
+
+    # remove unhandled escapes
+    local sed_script='s/\x1b[ #%()*+].//; s/\x1b[^[]//g; s/\x1b\[[?>=!]?[0-9:;]*[^0-9:;m]//g'
+    if (( live_preview_config[dim] )); then
+        # and make it dim
+        sed_script+='; s/\x1b\[[0-9:;]*/&;2/g'
+    fi
+
     # wait for a line
     while IFS= read -r line; do
 
@@ -148,7 +156,10 @@ eval "$BUFFER"
             wait "$coproc_pid"
             printf '\n%s' "$?"
 
-        ) | (
+
+        ) \
+        | sed -u -e "$sed_script" \
+        | (
 
             command="$BUFFER"
             data=''
@@ -185,14 +196,6 @@ live_preview.format_pane() {
     local preview="$1"
     local size="$2"
 
-    # remove unhandled escapes
-    if [[ "$preview" =~ $'\x1b'[^[]] || "$preview" =~ $'\x1b'\\[[?\>=!]?[0-9:\;]*[^0-9:\;m] ]]; then
-        preview="$(<<<"$preview" sed 's/\x1b[ #%()*+].//; s/\x1b[^[]//g; s/\x1b\[[?>=!]?[0-9:;]*[^0-9:;m]//g')"
-    fi
-    # make it dim
-    if (( live_preview_config[dim] )); then
-        preview=$'\x1b[2m'"$(<<<"$preview" sed 's/\x1b\[[0-9:;]*/&;2/g')"
-    fi
     local this_height="$(( size == 3 ? maxheight : int(maxheight / 3) * size ))"
     preview="$(<<<"$preview" sed -n -e "1,$(( this_height-1 ))p" -e "$(( this_height ))i${live_preview_config[ellipsis]}")"
 
@@ -222,9 +225,6 @@ live_preview.show_message() {
         CURSOR="${#BUFFER}"
     fi
     if (( maxheight )); then
-        if (( maxheight > LINES-2 )); then
-            maxheight="$((LINES-2))"
-        fi
         # use zle -M to reserve space
         zle -M -- "${(pl:$maxheight::\n:)}"
     fi
@@ -310,6 +310,9 @@ live_preview._add_pane() {
     local text="${live_preview_vars[${key}_preview]}"
     if (( live_preview_vars[${key}_scroll] > 0 )); then
         text="$(<<<"$text" sed "1,${live_preview_vars[${key}_scroll]}d")"
+    fi
+    if (( live_preview_config[dim] )); then
+        preview[-1]+=$'\x1b[2m'
     fi
     preview[-1]+="$text"
     live_preview_vars[pane_names]+=" ${key}"
