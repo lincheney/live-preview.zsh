@@ -1,7 +1,7 @@
 # live preview
 
 declare -A live_preview_config
-live_preview_config[pty]="live_preview_pty_$RANDOM"
+live_preview_config[id]="live_preview_id_$$"
 live_preview_config[debounce]=0.1
 live_preview_config[timeout]=10
 live_preview_config[height]=0.9
@@ -26,7 +26,6 @@ live_preview_config[border_success_label]='%S last success: %-5<$ellipsis<$comma
 declare -A live_preview_vars=(
     [active]=
     [running]=
-    [pid]="$$"
     [cache]=
 
     [pane_names]=
@@ -55,15 +54,15 @@ zmodload zsh/zpty
 zmodload zsh/mathfunc
 
 live_preview.get_height() {
-    local __height="${live_preview_config[height]}"
-    if (( __height < 1 )); then
+    local __h="${live_preview_config[height]}"
+    if (( __h< 1 )); then
         # calc preview height if fraction
-        __height="$(( int(LINES * __height) ))"
+        __h="$(( int(LINES * __h) ))"
     fi
-    if (( __height && __height > LINES-2 )); then
-        __height="$((LINES-2))"
+    if (( __h && __h > LINES-2 )); then
+        __h="$((LINES-2))"
     fi
-    printf -v "$1" %i "$__height"
+    printf -v "$1" %i "$__h"
 }
 
 live_preview.worker() (
@@ -230,9 +229,9 @@ live_preview.show_message() {
 
     local esc=$'\x1b'
     local output=(
-        # reserve space
+        # scroll up / reserve space
         "${(pl:$maxheight+1::\x0b:)}"
-        "${esc}[$((maxheight+1))A"              # go back up to cli
+        "${esc}[$((maxheight+1))A"          # go back up to cli
         "${esc}7"                           # save cursor pos
         "${esc}[$LINES;$((LINES+100))r"     # make scroll region very small
         "${esc}8"                           # restore cursor
@@ -323,7 +322,7 @@ live_preview.display() {
 
         # close the pty
         if (( ${live_preview_vars[running]} )); then
-            zpty -d "${live_preview_config[pty]}"
+            zpty -d "${live_preview_config[id]}"
             live_preview_vars[running]=0
         fi
         return
@@ -378,7 +377,7 @@ live_preview.redraw() {
             region_highlight+=( "0 $(( ${#BUFFER} + 1 )) ${live_preview_config[highlight_failed_command]} memo=live_preview" )
         fi
 
-        if [[ "${live_preview_config[show_last_success_if_saved]}" != 0 && "$code" != 0 && "${live_preview_vars[success_preview]}" =~ [[:graph:]] && "${live_preview_vars[success_preview]}" != "${live_preview_vars[saved_preview]}" ]]; then
+        if [[ "${live_preview_vars[success_preview]}" =~ [[:graph:]] && ( "${live_preview_config[show_last_success_if_saved]}" != 0 || ! ( "${live_preview_vars[saved_preview]}" =~ [[:graph]] ) ) ]]; then
             live_preview._add_pane success
             live_preview_vars[success_height]="$(( int(height / 3) ))"
         fi
@@ -455,14 +454,14 @@ live_preview.scroll_pane() {
 }
 
 live_preview.refresh() {
-    zpty -w "${live_preview_config[pty]}" "$(declare -p LINES); $(declare -p BUFFER)"
+    zpty -w "${live_preview_config[id]}" "$(declare -p LINES); $(declare -p BUFFER)"
 }
 
 live_preview.run() {
     if (( ! live_preview_vars[running] )); then
         # start
         live_preview_vars[running]=1
-        zpty "${live_preview_config[pty]}" live_preview.worker
+        zpty "${live_preview_config[id]}" live_preview.worker
         zle -Fw "$REPLY" live_preview.display
 
         if (( live_preview_config[enable_mouse] )); then
@@ -495,7 +494,7 @@ live_preview.stop() {
 
     if (( live_preview_vars[running] )); then
         region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
-        zpty -d "${live_preview_config[pty]}"
+        zpty -d "${live_preview_config[id]}"
         live_preview_vars[running]=0
 
         if (( live_preview_config[enable_mouse] )); then
@@ -506,7 +505,7 @@ live_preview.stop() {
 
 live_preview.reset() {
     live_preview.stop
-    live_preview_vars=( [pid]="$$" )
+    live_preview_vars=()
 }
 
 live_preview.toggle() {
