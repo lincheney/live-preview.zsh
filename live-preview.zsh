@@ -436,7 +436,8 @@ live_preview.scroll_pane() {
     if (( amount > 0 )); then
         local height="${live_preview_vars[${pane}_height]}"
         local text="${live_preview_vars[${pane}_preview]}"
-        local max="$(( $(wc -l <<<"$text") - height ))"
+        # this is just a heuristic
+        local max="$(( $(<<<"$text" fold -w "$COLUMNS" | wc -l) - height ))"
 
         if (( scroll + amount > max )); then
             return
