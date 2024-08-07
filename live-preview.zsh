@@ -1,5 +1,9 @@
 # live preview
 
+zmodload zsh/datetime
+zmodload zsh/zpty
+zmodload zsh/mathfunc
+
 declare -A live_preview_config
 live_preview_config[id]="live_preview_id_$$"
 live_preview_config[debounce]=0.1
@@ -49,19 +53,11 @@ declare -A live_preview_vars=(
     [saved_height]=
 )
 
-zmodload zsh/datetime
-zmodload zsh/zpty
-zmodload zsh/mathfunc
-
 live_preview.get_height() {
     local __h="${live_preview_config[height]}"
-    if (( __h< 1 )); then
-        # calc preview height if fraction
-        __h="$(( int(LINES * __h) ))"
-    fi
-    if (( __h && __h > LINES-2 )); then
-        __h="$((LINES-2))"
-    fi
+    # calc preview height if fraction
+    __h="$(( __h < 1 ? int(LINES * __h) : __h ))"
+    __h="$(( __h > LINES-2 ? LINES-2 : __h ))"
     printf -v "$1" %i "$__h"
 }
 
@@ -148,6 +144,10 @@ eval "$BUFFER"
             coproc_pid="$!"
             # use head to truncate the lines
             timeout "${live_preview_config[timeout]}" cat <&p \
+            | sed -u -n \
+                -e "1,${height}p" \
+                -e "$((height+1))i..." \
+                -e "$((height+2))q"
             | head -c "${live_preview_config[char_limit]}"
 
             # this has the effect of closing the coproc file descriptor
