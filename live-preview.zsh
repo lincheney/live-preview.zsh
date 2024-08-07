@@ -237,12 +237,14 @@ live_preview.show_message() {
         "${esc}[J"                          # clear
     )
     # print the preview
-    local height=0
-    local i
-    local pane_names=( ${=live_preview_vars[pane_names]} )
-    for i in {1..${#pane_names[@]}}; do
-        live_preview.format_pane "${pane_names[i]}" "${(P)i}"
-    done
+    if (( $# )); then
+        local height=0
+        local i
+        local pane_names=( ${=live_preview_vars[pane_names]} )
+        for i in {1..$#}; do
+            live_preview.format_pane "${pane_names[i]}" "${(P)i}"
+        done
+    fi
 
     output+=(
         "${esc}[0;$((LINES+100))r"          # restore scroll region
@@ -389,6 +391,7 @@ live_preview.redraw() {
 
     if ! [[ "${preview[*]}" =~ [[:graph:]] ]]; then
         preview=()
+        live_preview_vars[pane_names]=''
     else
         live_preview_vars[main_height]="$(( height - live_preview_vars[saved_height] - live_preview_vars[success_height] ))"
     fi
