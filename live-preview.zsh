@@ -16,6 +16,8 @@ live_preview_config[failed_message]=$'\x1b[31mCommand failed with exit status %s
 live_preview_config[show_main_border]=0
 live_preview_config[show_last_success_if_saved]=1
 live_preview_config[ellipsis]='…'
+live_preview_config[enable_mouse]=1
+live_preview_config[mouse_natural_scrolling]=0
 
 live_preview_config[border]='━'
 live_preview_config[border_start]='${(pl:4::$border:)}'
@@ -535,3 +537,21 @@ zle -N live_preview.save
 autoload -U add-zle-hook-widget
 add-zle-hook-widget line-pre-redraw live_preview.update
 add-zle-hook-widget line-finish live_preview.reset
+
+if (( live_preview_config[enable_mouse] )); then
+    live_preview.mouse_scroll() {
+        emulate -LR zsh
+        if (( live_preview_config[enable_mouse] )); then
+            local pane
+            live_preview.get_pane_at_y "$3" pane
+            if [[ "$1" == scroll-down ]]; then
+                live_preview.scroll_pane "$pane" "$(( live_preview_config[mouse_natural_scrolling] ? -1 : 1 ))"
+            else
+                live_preview.scroll_pane "$pane" "$(( live_preview_config[mouse_natural_scrolling] ? 1 : -1 ))"
+            fi
+        fi
+    }
+
+    bindmouse scroll-up live_preview.mouse_scroll
+    bindmouse scroll-down live_preview.mouse_scroll
+fi
