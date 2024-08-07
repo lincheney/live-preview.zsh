@@ -466,7 +466,7 @@ live_preview.run() {
         zle -Fw "$REPLY" live_preview.display
 
         if (( live_preview_config[enable_mouse] )); then
-            zsh-enable-mouse 1
+            zsh-enable-sgr-mouse 1
         fi
 
     fi
@@ -499,7 +499,7 @@ live_preview.stop() {
         live_preview_vars[running]=0
 
         if (( live_preview_config[enable_mouse] )); then
-            zsh-enable-mouse 0
+            zsh-enable-sgr-mouse 0
         fi
     fi
 }
@@ -540,10 +540,11 @@ add-zle-hook-widget line-finish live_preview.reset
 if (( live_preview_config[enable_mouse] )); then
     live_preview.mouse_scroll() {
         emulate -LR zsh
+
         if (( live_preview_config[enable_mouse] )); then
             local pane
             live_preview.get_pane_at_y "$3" pane
-            if [[ "$1" == scroll-down ]]; then
+            if [[ "$1" == scrolldown ]]; then
                 live_preview.scroll_pane "$pane" "$(( live_preview_config[mouse_natural_scrolling] ? -1 : 1 ))"
             else
                 live_preview.scroll_pane "$pane" "$(( live_preview_config[mouse_natural_scrolling] ? 1 : -1 ))"
@@ -551,6 +552,6 @@ if (( live_preview_config[enable_mouse] )); then
         fi
     }
 
-    bindmouse scroll-up live_preview.mouse_scroll
-    bindmouse scroll-down live_preview.mouse_scroll
+    bindmouse scrollup live_preview.mouse_scroll
+    bindmouse scrolldown live_preview.mouse_scroll
 fi
