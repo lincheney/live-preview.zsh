@@ -149,7 +149,7 @@ eval "$BUFFER"
             | sed -u -n \
                 -e "1,${height}p" \
                 -e "$((height+1))i..." \
-                -e "$((height+2))q"
+                -e "$((height+2))q" \
             | head -c "${live_preview_config[char_limit]}"
 
             # this has the effect of closing the coproc file descriptor
