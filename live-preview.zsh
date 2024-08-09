@@ -525,6 +525,20 @@ live_preview.save() {
     live_preview_vars[saved_scroll]=0
 }
 
+live_preview.mouse_scroll() {
+    emulate -LR zsh
+
+    if (( live_preview_config[enable_mouse] )); then
+        local pane
+        live_preview.get_pane_at_y "$3" pane
+        if [[ "$1" == scrolldown ]]; then
+            live_preview.scroll_pane "$pane" "$(( live_preview_config[mouse_natural_scrolling] ? -1 : 1 ))"
+        else
+            live_preview.scroll_pane "$pane" "$(( live_preview_config[mouse_natural_scrolling] ? 1 : -1 ))"
+        fi
+    fi
+}
+
 zle -N live_preview.on_update
 zle -N live_preview.toggle
 zle -N live_preview.reset
@@ -539,20 +553,6 @@ add-zle-hook-widget line-pre-redraw live_preview.update
 add-zle-hook-widget line-finish live_preview.reset
 
 if (( live_preview_config[enable_mouse] )); then
-    live_preview.mouse_scroll() {
-        emulate -LR zsh
-
-        if (( live_preview_config[enable_mouse] )); then
-            local pane
-            live_preview.get_pane_at_y "$3" pane
-            if [[ "$1" == scrolldown ]]; then
-                live_preview.scroll_pane "$pane" "$(( live_preview_config[mouse_natural_scrolling] ? -1 : 1 ))"
-            else
-                live_preview.scroll_pane "$pane" "$(( live_preview_config[mouse_natural_scrolling] ? 1 : -1 ))"
-            fi
-        fi
-    }
-
     bindmouse scrollup live_preview.mouse_scroll
     bindmouse scrolldown live_preview.mouse_scroll
 fi
