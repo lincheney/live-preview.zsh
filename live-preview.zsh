@@ -297,7 +297,7 @@ live_preview._add_pane() {
 
     local key="$1"
     preview+=( '' )
-    if (( live_preview_config[show_top_border] )) || [[ "$key" != main ]]; then
+    if (( live_preview_config[show_main_border] )) || [[ "$key" != main ]]; then
         local command="${live_preview_vars[${key}_command]}"
         local code="${live_preview_vars[${key}_code]}"
 
