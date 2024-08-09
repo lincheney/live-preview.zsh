@@ -16,8 +16,7 @@ Note that the live preview is [potentially dangerous](#dangerous-commands).
 
 ### Demo
 
-https://github.com/user-attachments/assets/b650f95a-af36-4fd8-a77f-64f52bc77556
-
+https://github.com/user-attachments/assets/48e16148-c254-4502-bf2b-6f6b4ee26274
 
 ## Usage
 
