@@ -14,7 +14,10 @@ instead just type until the preview looks right.
 
 Note that the live preview is [potentially dangerous](#dangerous-commands).
 
-TODO make a demo gif thing
+### Demo
+
+https://github.com/user-attachments/assets/b650f95a-af36-4fd8-a77f-64f52bc77556
+
 
 ## Usage
 
