@@ -34,7 +34,7 @@ declare -A live_preview_vars=(
     [running]=
     [cache]=
 
-    [pane_names]=
+    [active_panes]=
 
     [main_preview]=
     [main_code]=
@@ -212,7 +212,7 @@ live_preview.format_pane() {
     (( height += this_height ))
 }
 
-live_preview.show_message() {
+live_preview.render() {
     # pause render
     printf '\x1b[?2026h'
 
@@ -240,9 +240,9 @@ live_preview.show_message() {
     if (( $# )); then
         local height=0
         local i
-        local pane_names=( ${=live_preview_vars[pane_names]} )
+        local active_panes=( ${=live_preview_vars[active_panes]} )
         for i in {1..$#}; do
-            live_preview.format_pane "${pane_names[i]}" "${(P)i}"
+            live_preview.format_pane "${active_panes[i]}" "${(P)i}"
         done
     fi
 
@@ -306,10 +306,10 @@ live_preview._add_pane() {
         preview[-1]+=$'\x1b[2m'
     fi
     preview[-1]+="$text"
-    live_preview_vars[pane_names]+=" ${key}"
+    live_preview_vars[active_panes]+=" ${key}"
 }
 
-live_preview.display() {
+live_preview.on_update() {
     emulate -LR zsh
 
     local fd="$1"
@@ -367,7 +367,7 @@ live_preview.redraw() {
     # clear highlights
     region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
 
-    live_preview_vars[pane_names]=''
+    live_preview_vars[active_panes]=''
     local preview=()
     live_preview._add_pane main
 
@@ -391,12 +391,12 @@ live_preview.redraw() {
 
     if ! [[ "${preview[*]}" =~ [[:graph:]] ]]; then
         preview=()
-        live_preview_vars[pane_names]=''
+        live_preview_vars[active_panes]=''
     else
         live_preview_vars[main_height]="$(( height - live_preview_vars[saved_height] - live_preview_vars[success_height] ))"
     fi
 
-    live_preview.show_message "$height" "${preview[@]}"
+    live_preview.render "$height" "${preview[@]}"
 
     if (( code == 0 )); then
         if [[ "$data" != "${live_preview_vars[success_preview]}" ]]; then
@@ -416,7 +416,7 @@ live_preview.get_pane_at_y() {
     live_preview.get_height __height
     (( __y -= LINES - __height ))
 
-    local __pane_names=( ${=live_preview_vars[pane_names]} )
+    local __pane_names=( ${=live_preview_vars[active_panes]} )
     local __pane
     for __pane in "${__pane_names[@]}"; do
         (( __y -= live_preview_vars[${__pane}_height] ))
@@ -464,7 +464,7 @@ live_preview.run() {
         # start
         live_preview_vars[running]=1
         zpty "${live_preview_config[id]}" live_preview.worker
-        zle -Fw "$REPLY" live_preview.display
+        zle -Fw "$REPLY" live_preview.on_update
 
         if (( live_preview_config[enable_mouse] )); then
             zsh-enable-sgr-mouse 1
@@ -525,7 +525,7 @@ live_preview.save() {
     live_preview_vars[saved_scroll]=0
 }
 
-zle -N live_preview.display
+zle -N live_preview.on_update
 zle -N live_preview.toggle
 zle -N live_preview.reset
 zle -N live_preview.start
