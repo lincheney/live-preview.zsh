@@ -7,27 +7,48 @@ zmodload zsh/mathfunc
 LIVE_PREVIEW_CONFIG_ID="live_preview_id_$$"
 
 declare -A live_preview_config
+# input debounce in seconds; the live preview will not update until this interval has passed with no keys pressed
 live_preview_config[debounce]=0.1
+# command timeout in seconds
 live_preview_config[timeout]=10
+# height of the preview in lines; if this is < 1, then it is as a fraction of the terminal height
 live_preview_config[height]=0.9
+# maximum number of bytes to read from the command output
 live_preview_config[char_limit]=100000
+# highlight commands that failed; this is used with region_highlight; set to empty string to disable
 live_preview_config[highlight_failed_command]='bg=#330000'
+# dim the preview ie \x1b[2m
 live_preview_config[dim]=1
+# additional message to show if the command fails; this is a printf-style string; %s is replaced with the exit code
 live_preview_config[failed_message]=$'\x1b[31mCommand failed with exit status %s\x1b[0m'
+# whether to show the border/header of the main preview pane
 live_preview_config[show_main_border]=0
+# whether to show the pane of the last succesful output if you also have a saved output
 live_preview_config[show_last_success_if_saved]=1
+# ellipsis string; used when the output overflows
 live_preview_config[ellipsis]='…'
+# enable scrolling with the mouse using SGR mouse events; MUST have https://github.com/lincheney/live-preview.zsh
 live_preview_config[enable_mouse]=1
+# use natural scrolling
 live_preview_config[mouse_natural_scrolling]=0
 
+# border characeter
 live_preview_config[border]='━'
+# the start of the border; by default this is the border char repeated 4 times
 live_preview_config[border_start]='${(pl:4::$border:)}'
+# the end of the border; by default this fills up the rest of the line with the border char
 live_preview_config[border_end]='${(pl:$COLUMNS::$border:)}'
+# colour of the border of the main pane; use prompt escapes here
 live_preview_config[border_main_colour]='%F{13}%B'
+# colour of the border of the saved output pane; use prompt escapes here
 live_preview_config[border_saved_colour]='%F{3}%B'
+# colour of the border of the last success pane; use prompt escapes here
 live_preview_config[border_success_colour]='%F{2}%B'
+# label of the border of the main pane; use prompt escapes here
 live_preview_config[border_main_label]='%S preview: %-5<$ellipsis<$command<< %s'
+# label of the border of the saved output pane; use prompt escapes here
 live_preview_config[border_saved_label]='%S saved: %-5<$ellipsis<$command%<< %s'
+# label of the border of the last success pane; use prompt escapes here
 live_preview_config[border_success_label]='%S last success: %-5<$ellipsis<$command%<< %s'
 
 declare -A live_preview_vars=(
@@ -541,12 +562,18 @@ live_preview.mouse_scroll() {
 }
 
 zle -N live_preview.on_update
-zle -N live_preview.toggle
 zle -N live_preview.reset
-zle -N live_preview.start
-zle -N live_preview.stop
 zle -N live_preview.update
+
+# toggle real-time preview update on/off
+zle -N live_preview.toggle
+# turn real-time preview update on
+zle -N live_preview.start
+# turn real-time preview update off
+zle -N live_preview.stop
+# run/update the preview once (not real-time)
 zle -N live_preview.run
+# save the current output into the saved pane
 zle -N live_preview.save
 
 autoload -U add-zle-hook-widget
