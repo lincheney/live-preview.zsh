@@ -4,7 +4,7 @@ zmodload zsh/datetime
 zmodload zsh/zpty
 zmodload zsh/mathfunc
 
-LIVE_PREVIEW_CONFIG_ID="live_preview_id_$$"
+LIVE_PREVIEW_ID="live_preview_id_$$"
 
 declare -A live_preview_config
 # input debounce in seconds; the live preview will not update until this interval has passed with no keys pressed
@@ -28,7 +28,7 @@ live_preview_config[show_last_success_if_saved]=1
 # ellipsis string; used when the output overflows
 live_preview_config[ellipsis]='…'
 # enable scrolling with the mouse using SGR mouse events; MUST have https://github.com/lincheney/live-preview.zsh
-live_preview_config[enable_mouse]=1
+live_preview_config[enable_mouse]=0
 # use natural scrolling
 live_preview_config[mouse_natural_scrolling]=0
 
@@ -344,7 +344,7 @@ live_preview.on_update() {
 
         # close the pty
         if (( ${live_preview_vars[running]} )); then
-            zpty -d "${LIVE_PREVIEW_CONFIG_ID}"
+            zpty -d "$LIVE_PREVIEW_ID"
             live_preview_vars[running]=0
         fi
         return
@@ -478,14 +478,14 @@ live_preview.scroll_pane() {
 }
 
 live_preview.refresh() {
-    zpty -w "$LIVE_PREVIEW_CONFIG_ID" "$(declare -p LINES); $(declare -p BUFFER)"
+    zpty -w "$LIVE_PREVIEW_ID" "$(declare -p LINES); $(declare -p BUFFER)"
 }
 
 live_preview.run() {
     if (( ! live_preview_vars[running] )); then
         # start
         live_preview_vars[running]=1
-        zpty "$LIVE_PREVIEW_CONFIG_ID" live_preview.worker
+        zpty "$LIVE_PREVIEW_ID" live_preview.worker
         zle -Fw "$REPLY" live_preview.on_update
 
         if (( live_preview_config[enable_mouse] )); then
@@ -518,7 +518,7 @@ live_preview.stop() {
 
     if (( live_preview_vars[running] )); then
         region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
-        zpty -d "$LIVE_PREVIEW_CONFIG_ID"
+        zpty -d "$LIVE_PREVIEW_ID"
         live_preview_vars[running]=0
 
         if (( live_preview_config[enable_mouse] )); then
