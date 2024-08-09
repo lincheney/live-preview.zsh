@@ -93,7 +93,7 @@ live_preview.worker() (
     local old_buffer=
 
     # remove unhandled escapes
-    local sed_script='s/\x1b[ #%()*+].//; s/\x1b[^[]//g; s/\x1b\[[?>=!]?[0-9:;]*[^0-9:;m]//g'
+    local sed_script='s/\x1b[ #%()*+].//; s/\x1b[^[]//g; s/\x1b\[[?>=!]\?[0-9:;]*[^0-9:;m]//g'
     if (( live_preview_config[dim] )); then
         # and make it dim
         sed_script+='; s/\x1b\[[0-9:;]*/&;2/g'
