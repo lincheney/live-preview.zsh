@@ -561,6 +561,13 @@ live_preview.mouse_scroll() {
     fi
 }
 
+live_preview.enable_mouse() {
+    if (( live_preview_config[enable_mouse] )); then
+        bindmouse scrollup live_preview.mouse_scroll
+        bindmouse scrolldown live_preview.mouse_scroll
+    fi
+}
+
 zle -N live_preview.on_update
 zle -N live_preview.reset
 zle -N live_preview.update
@@ -580,7 +587,4 @@ autoload -U add-zle-hook-widget
 add-zle-hook-widget line-pre-redraw live_preview.update
 add-zle-hook-widget line-finish live_preview.reset
 
-if (( live_preview_config[enable_mouse] )); then
-    bindmouse scrollup live_preview.mouse_scroll
-    bindmouse scrolldown live_preview.mouse_scroll
-fi
+live_preview.enable_mouse

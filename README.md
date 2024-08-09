@@ -83,7 +83,12 @@ and `DELTA` is the scroll amount (negative numbers scroll up).
 There is basic mouse scrolling support.
 
 You *must* have <https://github.com/lincheney/mouse.zsh> and `source` it *before* `live-preview.zsh`.
-And also configure `live_preview_config[enable_mouse]=1`.
+
+Then run 
+```zsh
+live_preview_config[enable_mouse]=1
+live_preview.enable_mouse
+```
 
 ### Caching
 
