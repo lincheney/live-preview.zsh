@@ -4,8 +4,9 @@ zmodload zsh/datetime
 zmodload zsh/zpty
 zmodload zsh/mathfunc
 
+LIVE_PREVIEW_CONFIG_ID="live_preview_id_$$"
+
 declare -A live_preview_config
-live_preview_config[id]="live_preview_id_$$"
 live_preview_config[debounce]=0.1
 live_preview_config[timeout]=10
 live_preview_config[height]=0.9
@@ -322,7 +323,7 @@ live_preview.on_update() {
 
         # close the pty
         if (( ${live_preview_vars[running]} )); then
-            zpty -d "${live_preview_config[id]}"
+            zpty -d "${LIVE_PREVIEW_CONFIG_ID}"
             live_preview_vars[running]=0
         fi
         return
@@ -456,14 +457,14 @@ live_preview.scroll_pane() {
 }
 
 live_preview.refresh() {
-    zpty -w "${live_preview_config[id]}" "$(declare -p LINES); $(declare -p BUFFER)"
+    zpty -w "$LIVE_PREVIEW_CONFIG_ID" "$(declare -p LINES); $(declare -p BUFFER)"
 }
 
 live_preview.run() {
     if (( ! live_preview_vars[running] )); then
         # start
         live_preview_vars[running]=1
-        zpty "${live_preview_config[id]}" live_preview.worker
+        zpty "$LIVE_PREVIEW_CONFIG_ID" live_preview.worker
         zle -Fw "$REPLY" live_preview.on_update
 
         if (( live_preview_config[enable_mouse] )); then
@@ -496,7 +497,7 @@ live_preview.stop() {
 
     if (( live_preview_vars[running] )); then
         region_highlight=( "${region_highlight[@]:#*memo=live_preview}" )
-        zpty -d "${live_preview_config[id]}"
+        zpty -d "$LIVE_PREVIEW_CONFIG_ID"
         live_preview_vars[running]=0
 
         if (( live_preview_config[enable_mouse] )); then
