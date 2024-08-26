@@ -31,8 +31,10 @@ live_preview_config[ellipsis]='…'
 live_preview_config[enable_mouse]=0
 # use natural scrolling
 live_preview_config[mouse_natural_scrolling]=0
+# space separated list of zle widgets; do not update preview after these widgets are run
+live_preview_config[no_update_widgets]='fzf-completion'
 
-# border characeter
+# border character
 live_preview_config[border]='━'
 # the start of the border; by default this is the border char repeated 4 times
 live_preview_config[border_start]='${(pl:4::$border:)}'
@@ -498,6 +500,11 @@ live_preview.run() {
 
 live_preview.update() {
     if (( live_preview_vars[active] )); then
+        local no_update_widgets=( ${=live_preview_config[no_update_widgets]} )
+        if [[ -n "${no_update_widgets[(r)$LASTWIDGET]}" || "$(zle -l -L "$LASTWIDGET")" == 'zle -C '* ]]; then
+            return
+        fi
+
         live_preview.run
     fi
 }
