@@ -153,7 +153,7 @@ stty columns $COLUMNS
 stty rows $LINES
 exec 0</dev/null
 setopt localtraps
-trap "emulate -LR zsh; rc=\$?; echo; echo -n \$rc" EXIT
+trap "rc=\$?; emulate -LR zsh; echo; echo -n \$rc" EXIT
 setopt "${opts[@]}" >/dev/null
 eval "$BUFFER"
 '
