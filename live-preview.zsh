@@ -255,12 +255,12 @@ live_preview.render() {
     local output=(
         # scroll up / reserve space
         "${(pl:$maxheight+1::\x0b:)}"
-        "${esc}[$((maxheight+1))A"          # go back up to cli
-        "${esc}7"                           # save cursor pos
-        "${esc}[$LINES;$((LINES+100))r"     # make scroll region very small
-        "${esc}8"                           # restore cursor
-        $'\n'                               # go down one line
-        "${esc}[J"                          # clear
+        "${esc}[$((maxheight+1))A"            # go back up to cli
+        "${esc}7"                             # save cursor pos
+        "${esc}[$((LINES-1));$((LINES+100))r" # make scroll region very small
+        "${esc}8"                             # restore cursor
+        $'\n'                                 # go down one line
+        "${esc}[J"                            # clear
     )
     # print the preview
     if (( $# )); then
