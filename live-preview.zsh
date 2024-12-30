@@ -148,6 +148,7 @@ live_preview.worker() (
 
                 name="$RANDOM"
                 script='
+trap "" WINCH
 stty -onlcr -inlcr
 stty columns $COLUMNS
 stty rows $LINES
